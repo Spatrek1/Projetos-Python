@@ -1,0 +1,23 @@
+# Ambiente mínimo. Testado com Python 3.11.
+# Instalação:  pip install -r requirements.txt
+
+numpy>=1.24
+pandas>=2.0
+scipy>=1.10
+scikit-learn>=1.3
+requests>=2.31
+matplotlib>=3.7
+
+# Rede neural (CPU é suficiente para o porte do painel S2+S3)
+torch>=2.0
+
+# Baselines previstos no projeto de pesquisa
+xgboost>=2.0
+lightgbm>=4.0
+
+# Execução do notebook
+jupyterlab>=4.0
+ipykernel>=6.25
+
+# Testes
+pytest>=7.4

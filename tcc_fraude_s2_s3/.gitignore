@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv/
+
+# Dados coletados e resultados: reproduzíveis pelo notebook, não versionados.
+dados/brutos/*
+!dados/brutos/.gitkeep
+dados/processados/*
+!dados/processados/.gitkeep
+resultados/*
+!resultados/.gitkeep
+
+# Dados externos fornecidos pelo pesquisador (podem conter recortes próprios)
+dados/externos/*.csv
+!dados/externos/eventos_publicos_MODELO.csv

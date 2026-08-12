@@ -1,0 +1,30 @@
+cod_inst,anomes_evento,tipo_evento,fonte,observacao
+# MODELO — copie para eventos_publicos.csv e preencha.
+# Este arquivo esta VAZIO de proposito. Nenhum evento foi pre-preenchido porque
+# a datacao e a qualificacao de cada caso precisam vir de fonte primaria conferida
+# por voce; um evento errado ou mal datado contamina toda a secao 14 do notebook.
+#
+# cod_inst        identificador da instituicao, no MESMO padrao usado pelo IF.data
+#                 (conferir na secao 3 do notebook: codigo do conglomerado x CNPJ)
+# anomes_evento   AAAAMM do ato/publicacao (nao da suposta ocorrencia dos fatos)
+# tipo_evento     LIQUIDACAO_EXTRAJUDICIAL | RAET | INTERVENCAO |
+#                 CANCELAMENTO_AUTORIZACAO | PAS_BCB | FATO_RELEVANTE_CVM | OUTRO
+# fonte           URL ou referencia do documento primario (ato do BCB, edital,
+#                 acordao, fato relevante). E o que permite a banca conferir.
+# observacao      livre
+#
+# Onde procurar:
+#   * Atos do Banco Central (liquidacao extrajudicial, RAET, intervencao,
+#     cancelamento de autorizacao para funcionamento)
+#   * Processos administrativos sancionadores do BCB
+#   * Fatos relevantes e processos sancionadores da CVM (instituicoes de capital aberto)
+#   * Diario Oficial da Uniao
+#
+# CUIDADO METODOLOGICO
+#   Investigacao em curso NAO e evento comprovado. Se optar por incluir casos
+#   ainda sob apuracao, use um tipo_evento distinto (ex.: APURACAO_EM_CURSO) e
+#   reporte os resultados separadamente — misturar as duas coisas transforma
+#   suspeita noticiada em rotulo, e o TCC nao se sustenta nisso.
+#
+# Exemplo de linha (formato apenas; substitua por caso real conferido):
+# 99999999,202312,LIQUIDACAO_EXTRAJUDICIAL,https://www.bcb.gov.br/...,ato publicado no DOU
