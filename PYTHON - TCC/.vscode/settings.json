@@ -1,0 +1,17 @@
+{
+  "python.analysis.extraPaths": ["./src", "./testes"],
+  "python.analysis.autoSearchPaths": true,
+  "python.testing.pytestArgs": ["testes"],
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+
+  "// nota": "Code Runner executa apenas o TRECHO SELECIONADO quando ha selecao no editor, gravando-o em tempCodeRunnerFile.py. As duas opcoes abaixo desligam esse comportamento e fazem o botao rodar sempre o arquivo inteiro, a partir da pasta do projeto.",
+  "code-runner.runInTerminal": true,
+  "code-runner.ignoreSelection": true,
+  "code-runner.fileDirectoryAsCwd": false,
+
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/tempCodeRunnerFile.py": true
+  }
+}
