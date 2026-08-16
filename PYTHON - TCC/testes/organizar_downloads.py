@@ -33,13 +33,19 @@ sys.path.insert(0, str(RAIZ / "src"))
 
 LARGURA = 78
 
-#: Relatórios sugeridos e os conceitos que cada um costuma trazer.
-#: Os nomes na interface do IF.data devem ser confirmados na tela.
+#: Relatórios essenciais, com o nome exato como aparece no seletor
+#: "Tipo de relatório" da interface do IF.data.
 RELATORIOS = {
-    "balanco": "Balanço Patrimonial (Ativo e Passivo)",
-    "resultado": "Demonstração de Resultado",
-    "carteira": "Carteira de crédito por nível de risco",
-    "capital": "Informações de capital (Basileia)",
+    "resumo": "Resumo  (ativo, carteira, PL, lucro, Basileia — e o SEGMENTO na coluna SR)",
+    "ativo": "Ativo  (provisao/PCLD, TVM, disponibilidades, creditos tributarios)",
+    "resultado": "Demonstração de Resultado  (margem financeira, despesa de provisao)",
+    "segmentacao": "Segmentação  (confirmacao oficial do enquadramento S1-S5)",
+}
+
+#: Relatórios que alimentam indicadores secundários. Baixe depois, se sobrar tempo.
+RELATORIOS_OPCIONAIS = {
+    "passivo": "Passivo  (capital social, para o indicador de emissao)",
+    "capital": "Informações de Capital  (RWA detalhado; o Basileia ja vem no Resumo)",
 }
 
 
@@ -61,6 +67,12 @@ def criar_pastas() -> int:
     titulo("CRIANDO ESTRUTURA DE PASTAS")
     base = RAIZ / "dados" / "brutos"
     for nome, descricao in RELATORIOS.items():
+        destino = base / nome
+        destino.mkdir(parents=True, exist_ok=True)
+        print(f"  {destino.relative_to(RAIZ)}   <- {descricao}")
+
+    print("\n  Opcionais (indicadores secundarios; deixe para depois se o tempo apertar):")
+    for nome, descricao in RELATORIOS_OPCIONAIS.items():
         destino = base / nome
         destino.mkdir(parents=True, exist_ok=True)
         print(f"  {destino.relative_to(RAIZ)}   <- {descricao}")

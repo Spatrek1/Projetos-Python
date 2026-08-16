@@ -56,6 +56,94 @@ def carregar_oficial(caminho: Path | str = ARQUIVO_OFICIAL) -> pd.DataFrame | No
     return df
 
 
+def extrair_do_resumo(resumo: pd.DataFrame, coluna_segmento: str | None = None,
+                      coluna_inst: str | None = None,
+                      salvar: bool = True) -> pd.DataFrame:
+    """Constrói a segmentação oficial a partir do relatório Resumo do IF.data.
+
+    O relatório Resumo publica uma coluna de segmentação (rotulada ``SR`` na
+    interface web) com o enquadramento S1–S5 vigente na data-base. Essa é a
+    **classificação do supervisor**, não uma reconstrução: dispensa a série de
+    PIB e elimina a aproximação da regra Exposição/PIB.
+
+    Devolve, e opcionalmente grava em ``dados/externos/segmentacao_oficial.csv``,
+    uma tabela ``cod_inst, anomes, segmento``.
+    """
+    df = resumo.copy()
+
+    if coluna_segmento is None:
+        coluna_segmento = _primeira_coluna(df, r"^sr$|^segment|segmentacao|^seg$")
+    if coluna_inst is None:
+        coluna_inst = _primeira_coluna(df, r"^codinst|^cod_inst|^instituicao|^cnpj")
+
+    if coluna_segmento is None or coluna_inst is None:
+        diagnostico.registrar(
+            area=AREA,
+            item=(
+                "Nao foi possivel localizar a coluna de segmentacao ou de instituicao "
+                f"no relatorio Resumo. Colunas disponiveis: {list(df.columns)[:20]}"
+            ),
+            impacto="A segmentacao oficial nao pode ser extraida; o pipeline recai na regra Exposicao/PIB.",
+            acao=(
+                "Informar explicitamente os nomes: segmentacao.extrair_do_resumo("
+                "resumo, coluna_segmento='SR', coluna_inst='CodInst'). "
+                "Area: segmentacao.extrair_do_resumo()."
+            ),
+            severidade=diagnostico.Severidade.COMPROMETE,
+        )
+        raise ValueError("Colunas de segmento/instituicao nao localizadas no Resumo.")
+
+    if "anomes" not in df.columns:
+        raise ValueError("O DataFrame precisa da coluna 'anomes'.")
+
+    saida = (
+        df[[coluna_inst, "anomes", coluna_segmento]]
+        .rename(columns={coluna_inst: "cod_inst", coluna_segmento: "segmento"})
+        .dropna(subset=["segmento"])
+    )
+    saida["cod_inst"] = saida["cod_inst"].astype(str).str.strip()
+    saida["segmento"] = (
+        saida["segmento"].astype(str).str.strip().str.upper()
+        .str.extract(r"(S[1-5])", expand=False)
+    )
+
+    invalidos = int(saida["segmento"].isna().sum())
+    saida = saida.dropna(subset=["segmento"]).drop_duplicates(["cod_inst", "anomes"])
+
+    if invalidos:
+        diagnostico.registrar(
+            area=AREA,
+            item=f"{invalidos} registro(s) do Resumo com valor de segmento fora do padrao S1-S5.",
+            impacto="Essas instituicoes ficam sem enquadramento e saem da amostra.",
+            acao=(
+                f"Inspecionar os valores distintos da coluna '{coluna_segmento}' e ajustar "
+                "a extracao. Area: segmentacao.extrair_do_resumo()."
+            ),
+            severidade=diagnostico.Severidade.OBSERVA,
+        )
+
+    if salvar:
+        ARQUIVO_OFICIAL.parent.mkdir(parents=True, exist_ok=True)
+        saida.to_csv(ARQUIVO_OFICIAL, index=False)
+
+    return saida.reset_index(drop=True)
+
+
+def _primeira_coluna(df: pd.DataFrame, padrao: str) -> str | None:
+    import re
+    import unicodedata
+
+    def norm(s: str) -> str:
+        s = unicodedata.normalize("NFKD", str(s))
+        s = "".join(c for c in s if not unicodedata.combining(c))
+        return re.sub(r"[^a-z0-9]", "", s.lower())
+
+    for c in df.columns:
+        if re.search(padrao, norm(c)):
+            return c
+    return None
+
+
 def carregar_pib(caminho: Path | str = ARQUIVO_PIB) -> pd.Series | None:
     """PIB acumulado em 12 meses, em R$, indexado por AAAAMM.
 

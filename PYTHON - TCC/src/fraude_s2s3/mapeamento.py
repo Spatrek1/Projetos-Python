@@ -79,7 +79,9 @@ CONCEITOS: tuple[Conceito, ...] = (
              (r"captac(oes)?", r"depositos?total", r"^depositos$",
               r"recursoscaptados"), False, "estoque"),
     Conceito("passivo_total", "Passivo total (exigível)",
-             (r"passivo(total|circulante)?$", r"totaldopassivo"), False, "estoque"),
+             (r"^passivototal$", r"totaldopassivo", r"^passivocirculante"), False, "estoque",
+             "No relatorio Resumo do IF.data o rotulo observado e 'Passivo Circulante e "
+             "Exigivel a Longo Prazo e Resultados de Exercicios Futuros'."),
     Conceito("patrimonio_liquido", "Patrimônio líquido",
              (r"patrimonioliquido", r"^pl$"), True, "estoque"),
     Conceito("capital_social", "Capital social realizado",
