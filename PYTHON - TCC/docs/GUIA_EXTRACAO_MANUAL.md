@@ -1,8 +1,13 @@
-# Guia de extração manual do IF.data
+# Guia de obtenção dos dados do IF.data
 
-Procedimento completo para obter os dados do IF.data/COSIF pela interface web
-quando a coleta automática via API não estiver disponível, e para prepará-los
-de modo que o pipeline os consuma sem nenhuma alteração de código.
+Procedimento completo para obter os dados do IF.data/COSIF e prepará-los para o
+pipeline, pelas **duas rotas possíveis**: coleta automática via API (seção 0) e
+extração manual pela interface web (seções 1 a 5). As duas convergem na seção 6
+— dali em diante o tratamento é idêntico.
+
+O documento é mais detalhado na rota manual porque é a que exige procedimento
+humano repetitivo e sujeito a erro silencioso. A rota automática está descrita
+na seção 0 e detalhada em `DOCUMENTACAO_MODULOS.md`, seção 2.
 
 > **Nota sobre este guia.** Ele foi escrito sem acesso ao site do Banco Central
 > (o ambiente de desenvolvimento tinha `bcb.gov.br` bloqueado). Os passos
@@ -14,6 +19,7 @@ de modo que o pipeline os consuma sem nenhuma alteração de código.
 
 ## Sumário
 
+0. [As duas rotas: automática e manual](#0)
 1. [Por que a extração manual não é um plano B inferior](#1)
 2. [O que precisa ser baixado](#2)
 3. [Passo a passo da extração](#3)
@@ -23,6 +29,134 @@ de modo que o pipeline os consuma sem nenhuma alteração de código.
 7. [Tratamento: do CSV bruto ao painel](#7)
 8. [Registro para reprodutibilidade](#8)
 9. [Problemas frequentes](#9)
+
+---
+
+<a id="0"></a>
+## 0. As duas rotas: automática e manual
+
+Existem dois caminhos para obter os mesmos dados. **Eles convergem na seção 6**
+— dali em diante, o pipeline é idêntico.
+
+```
+ROTA A (automática)                      ROTA B (manual)
+API OData do IF.data                     Interface web do IF.data
+        │                                        │
+  notebook §2: descoberta                  download CSV por trimestre
+  notebook §2.1: RELATORIOS                nomear com AAAAMM
+  notebook §3.1: coleta                    validar_extracao_manual.py
+        │                                        │
+        └──────────────┬─────────────────────────┘
+                       ↓
+              notebook §3.3 (formato longo → largo)
+              §4 segmentação · §5 mapeamento · §6 indicadores
+```
+
+### Qual escolher
+
+| Situação | Rota |
+|---|---|
+| API responde e as consultas retornam dados | **A** — muito mais rápido |
+| API responde mas as consultas falham | **A**, depois de ajustar (ver 0.2) |
+| API bloqueada por rede corporativa | **B** |
+| Precisa anexar arquivos-fonte ao TCC | **B**, ou A **e** B (recomendado) |
+
+### 0.1 Rota A — passo a passo
+
+**1. Confirme o acesso**
+
+```powershell
+python testes\diagnostico_rede.py
+```
+
+Precisa terminar com `SUCESSO`. Se não terminar, a mensagem indica o que
+corrigir; se for bloqueio de política, vá para a Rota B.
+
+**2. Descubra o esquema — notebook, seção 2**
+
+Esta célula é o coração da rota automática:
+
+```python
+cliente = ifdata.ClienteIFData()
+catalogo_servico = cliente.descrever_servico()
+```
+
+Ela baixa o documento `$metadata`, interpreta o XML e imprime uma tabela com os
+recursos que o serviço **realmente** publica: nome, parâmetros exigidos e
+campos disponíveis.
+
+**Leia essa tabela antes de qualquer outra coisa.** Nada no código presume o
+contrato da API — é essa saída que informa quais códigos de relatório e de tipo
+de instituição existem.
+
+**3. Preencha os códigos — notebook, seção 2.1**
+
+```python
+RELATORIOS = ["1", "2", "4"]      # confirmar na tabela da seção 2
+TIPOS_INSTITUICAO = [2]           # confirmar na tabela da seção 2
+```
+
+Enquanto estiverem vazios, o pipeline registra pendência bloqueante — de
+propósito, para que ninguém rode a coleta no escuro.
+
+**4. Colete — notebook, seção 3.1**
+
+```python
+bruto_longo = cliente.coletar_painel(RELATORIOS, TIPOS_INSTITUICAO)
+```
+
+Varre período × relatório × tipo. Falhas isoladas **não** interrompem a
+varredura: são registradas e o período fica ausente, o que a seção 16 reporta.
+Cada resposta é gravada em `dados/brutos/` com carimbo de data.
+
+**5. Anote a data de coleta**
+
+```python
+print(bruto_longo.attrs["coletado_em"])
+```
+
+Vai para o TCC. O IF.data republica períodos quando há reapresentação de
+documento.
+
+### 0.2 Rota A — quando as consultas falham
+
+O `$metadata` responder não garante que as consultas de valores funcionem. Erros
+típicos e o que fazer:
+
+| Sintoma | Causa provável | Correção |
+|---|---|---|
+| `HTTP 400` na consulta de valores | Parâmetro com nome ou tipo diferente do esperado | Rode `cliente.descrever_servico()` e confira a coluna `parametros` do recurso `IfDataValores` |
+| `HTTP 404` no recurso | Nome do recurso mudou | Ajuste `recursos_candidatos` em `config.py` (`ConfigColeta`) |
+| Retorno vazio, sem erro | Combinação período/relatório/tipo não existe | Teste um período isolado: `cliente.valores(202403, rel, tipo)` |
+| `KeyError` na pivotagem (§3.3) | Nomes de coluna presumidos | Ajuste `COL_INST`, `COL_CONTA`, `COL_VALOR` aos nomes reais |
+| Coleta demora demais | 24 períodos × N relatórios × M tipos | Normal. O cache evita repetir na segunda execução |
+
+**Teste isolado antes de varrer tudo.** Vale mais que depurar a varredura
+completa:
+
+```python
+teste = cliente.valores(anomes=202403, relatorio="1", tipo_instituicao=2)
+print(teste.shape)
+print(teste.columns.tolist())
+print(teste.head())
+```
+
+Se isso funcionar, a varredura funciona. Se não, a mensagem de erro dirá qual
+parâmetro está errado — e o cliente foi escrito para não repetir erros 4xx,
+justamente porque repetir não resolve nome inexistente.
+
+**Quando desistir da Rota A.** Se depois de conferir o esquema e testar um
+período isolado a consulta continuar falhando, não insista: o custo de depurar
+um contrato de API não documentado supera o de baixar 24 arquivos. Vá para a
+Rota B — o resultado no TCC é o mesmo, e ainda ganha os arquivos-fonte
+anexáveis.
+
+### 0.3 O que vale para as duas rotas
+
+Independentemente da rota escolhida, valem as seções 5 a 8 deste guia:
+validação, carregamento, tratamento e registro de procedência. E vale a decisão
+da seção 2.4 — **conglomerado prudencial ou instituição individual** — que
+precisa ser tomada antes de coletar, nos dois caminhos.
 
 ---
 
