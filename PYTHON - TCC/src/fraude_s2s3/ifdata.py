@@ -322,6 +322,184 @@ class ClienteIFData:
 # Caminho alternativo: exportações manuais do IF.data
 # ---------------------------------------------------------------------------
 
+#: Marcadores de ausência usados pelo IF.data nas exportações CSV.
+AUSENTES_IFDATA = ("NA", "NA%", "N/A", "-", "", " ")
+
+
+def _para_numero(serie: pd.Series) -> pd.Series:
+    """Converte o formato numérico do IF.data para float.
+
+    O CSV do IF.data usa convenção brasileira e traz percentuais com sufixo:
+
+        "1.516.147.949"  -> 1516147949.0     (ponto = separador de milhar)
+        "19,26%"         -> 19.26            (virgula = decimal, % removido)
+        "NA" / "NA%"     -> NaN
+
+    Deixar o pandas inferir aqui é o erro mais caro do pipeline: a coluna vira
+    texto, todo indicador que dependa dela vira ``NaN``, e nada avisa.
+    """
+    s = serie.astype(str).str.strip()
+    s = s.where(~s.isin(AUSENTES_IFDATA))
+    s = (s.str.replace("%", "", regex=False)
+          .str.replace(".", "", regex=False)     # separador de milhar
+          .str.replace(",", ".", regex=False))   # decimal
+    return pd.to_numeric(s, errors="coerce")
+
+
+def carregar_ifdata_csv(caminho: Path | str, anomes: int | None = None) -> pd.DataFrame:
+    """Lê uma exportação CSV do IF.data respeitando o formato real do arquivo.
+
+    Trata: BOM UTF-8, separador ``;``, ponto como separador de milhar, vírgula
+    decimal, percentuais com ``%``, marcadores ``NA``/``NA%`` e a coluna vazia
+    final produzida pelo ``;`` terminal.
+
+    Devolve o quadro com ``cod_inst`` (a coluna "Código" do IF.data) e
+    ``anomes``, e com as colunas de valor já convertidas para float.
+    """
+    caminho = Path(caminho)
+    df = pd.read_csv(caminho, sep=";", encoding="utf-8-sig", dtype=str,
+                     keep_default_na=False, engine="python")
+
+    # A exportação termina com ';', gerando uma coluna final sem nome.
+    df = df.loc[:, [c for c in df.columns if str(c).strip() != ""]]
+    df.columns = [str(c).strip() for c in df.columns]
+
+    # Identificador da instituição.
+    col_codigo = _primeira_coluna(df, r"^codigo$|^codinst$|^cnpj$")
+    if col_codigo:
+        df = df.rename(columns={col_codigo: "cod_inst"})
+        df["cod_inst"] = df["cod_inst"].astype(str).str.strip()
+    else:
+        diagnostico.registrar(
+            area=AREA,
+            item=f"Coluna de codigo da instituicao nao encontrada em {caminho.name}.",
+            impacto="Sem identificador nao ha painel longitudinal: cada trimestre fica solto.",
+            acao=(
+                "Conferir o cabecalho do CSV e renomear a coluna de identificacao para "
+                "'cod_inst'. Area: ifdata.carregar_ifdata_csv()."
+            ),
+            severidade=diagnostico.Severidade.BLOQUEIA,
+        )
+
+    # Período: da coluna "Data" (MM/AAAA) ou do nome do arquivo.
+    col_data = _primeira_coluna(df, r"^data$|^database$|^anomes$")
+    if anomes is not None:
+        df["anomes"] = anomes
+    elif col_data:
+        d = df[col_data].astype(str).str.strip()
+        extraido = d.str.extract(r"(\d{2})/(\d{4})")
+        df["anomes"] = (extraido[1] + extraido[0]).astype("Int64")
+    else:
+        m = re.search(r"(20\d{2})[-_]?(0[369]|12)", caminho.stem)
+        df["anomes"] = int(m.group(1) + m.group(2)) if m else pd.NA
+
+    # ------------------------------------------------------------------
+    # Separação entre instituições e o rodapé de legenda.
+    #
+    # A exportação do IF.data anexa, ao final do arquivo, um bloco com a
+    # legenda dos códigos (TCB, SR, TD, TC) e os TOTAIS AGREGADOS de cada
+    # categoria — por exemplo, "S2 - Segmento 2" com a soma do ativo de todo
+    # o segmento. Essas linhas não têm código de instituição.
+    #
+    # Mantê-las faria agregados de trilhões entrarem no painel como se fossem
+    # instituições, contaminando winsorização, z-score por pares e o próprio
+    # treino da rede — sem produzir nenhum erro visível.
+    # ------------------------------------------------------------------
+    legenda = pd.DataFrame()
+    if "cod_inst" in df.columns:
+        sem_codigo = df["cod_inst"].isna() | (df["cod_inst"].astype(str).str.strip() == "")
+        legenda = df.loc[sem_codigo].copy()
+        df = df.loc[~sem_codigo].copy()
+        if len(legenda):
+            diagnostico.registrar(
+                area=AREA,
+                item=(
+                    f"{len(legenda)} linha(s) de legenda/totais removidas de "
+                    f"{caminho.name} (rodape da exportacao do IF.data)."
+                ),
+                impacto=(
+                    "Se mantidas, os totais agregados por segmento e por tipo de "
+                    "consolidado entrariam no painel como instituicoes."
+                ),
+                acao=(
+                    "Nenhuma — remocao automatica. O bloco fica disponivel em "
+                    "df.attrs['legenda'] e serve como dicionario de dados dos "
+                    "codigos TCB, SR, TD e TC para o TCC."
+                ),
+                severidade=diagnostico.Severidade.OBSERVA,
+            )
+
+    # Colunas que permanecem texto; o resto é numérico.
+    texto = {"cod_inst", "anomes"}
+    for c in df.columns:
+        if re.search(r"instituic|cidade|^uf$|^tcb$|^sr$|^td$|^tc$|^data$",
+                     _normalizar(c)):
+            texto.add(c)
+
+    convertidas, falhas = [], []
+    for c in df.columns:
+        if c in texto:
+            continue
+        original_validos = df[c].astype(str).str.strip().isin(AUSENTES_IFDATA).eq(False).sum()
+        df[c] = _para_numero(df[c])
+        obtidos = int(df[c].notna().sum())
+        convertidas.append(c)
+        if original_validos and obtidos == 0:
+            falhas.append(c)
+
+    if falhas:
+        diagnostico.registrar(
+            area=AREA,
+            item=f"Colunas que nao converteram para numero em {caminho.name}: {falhas}",
+            impacto=(
+                "Indicadores derivados dessas colunas ficam indefinidos. Como a conversao "
+                "falha em silencio no pandas, sem esta verificacao o erro so apareceria "
+                "como resultado vazio no fim do pipeline."
+            ),
+            acao=(
+                "Inspecionar os valores brutos dessas colunas no CSV e ajustar "
+                "ifdata._para_numero(). Area: ifdata.carregar_ifdata_csv()."
+            ),
+            severidade=diagnostico.Severidade.COMPROMETE,
+        )
+
+    df.attrs["arquivo"] = caminho.name
+    df.attrs["colunas_numericas"] = convertidas
+    df.attrs["legenda"] = legenda
+    return df.reset_index(drop=True)
+
+
+def carregar_pasta_ifdata(diretorio: Path | str, padrao: str = "*.csv") -> pd.DataFrame:
+    """Empilha todas as exportações CSV de uma pasta (um relatório do IF.data)."""
+    diretorio = Path(diretorio)
+    arquivos = sorted(diretorio.glob(padrao))
+    if not arquivos:
+        raise ErroColeta(f"Nenhum arquivo {padrao} em {diretorio}")
+
+    partes, problemas = [], []
+    for arq in arquivos:
+        try:
+            partes.append(carregar_ifdata_csv(arq))
+        except Exception as e:
+            problemas.append(f"{arq.name}: {type(e).__name__}: {e}")
+
+    if problemas:
+        diagnostico.registrar(
+            area=AREA,
+            item=f"{len(problemas)} arquivo(s) nao puderam ser lidos em {diretorio.name}.",
+            impacto="Os trimestres correspondentes ficam ausentes do painel.",
+            acao=f"Verificar: {'; '.join(problemas[:5])}. Area: ifdata.carregar_pasta_ifdata().",
+            severidade=diagnostico.Severidade.COMPROMETE,
+        )
+    if not partes:
+        raise ErroColeta(f"Nenhum arquivo legivel em {diretorio}")
+
+    df = pd.concat(partes, ignore_index=True)
+    df.attrs["n_arquivos"] = len(partes)
+    df.attrs["relatorio"] = diretorio.name
+    return df
+
+
 def carregar_csv_local(diretorio: Path | str, padrao: str = "*.csv",
                        sep: str | None = None, decimal: str = ",") -> pd.DataFrame:
     """Empilha exportações CSV do IF.data salvas localmente.
