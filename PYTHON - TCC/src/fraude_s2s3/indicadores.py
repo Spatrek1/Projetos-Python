@@ -5,34 +5,37 @@ Motivação
 Os modelos de referência foram calibrados em empresas **não financeiras**:
 
 * Beneish (1999) — M-Score: DSRI, GMI, AQI, SGI, DEPI, SGAI, LEVI, TATA.
-* Dechow et al. (2011) — F-Score/DF-Score: RSST_ACC, CH_REC, CH_INV,
-  SOFT_ASSETS, CH_CS, CH_CM, CH_ROA, CH_FCF.
-* Piotroski (2000) — PF-Score: nove sinais binários de rentabilidade,
-  alavancagem/liquidez e eficiência operacional.
+* Dechow et al. (2011) — F-Score: RSST_ACC, CH_REC, CH_INV, SOFT_ASSETS,
+  CH_CS, CH_CM, CH_ROA, CH_FCF.
+* Piotroski (2000) — PF-Score: nove sinais binários.
 
 Em banco, parte desses componentes é **inaplicável por construção**: não há
 estoque, não há custo das mercadorias vendidas, "vendas" não é receita
 operacional no mesmo sentido, e depreciação é irrelevante frente ao balanço.
-Aplicá-los sem adaptação produz número — não produz medida.
 
-O que este módulo faz
----------------------
-Reconstrói cada componente por **analogia funcional**, preservando a
-*intenção econômica* do indicador original e trocando a conta pelo equivalente
-bancário. Cada indicador declara explicitamente:
+Este módulo reconstrói cada componente por **analogia funcional** — preserva a
+intenção econômica do indicador e troca a conta pelo equivalente bancário — e
+acrescenta indicadores derivados do arcabouço prudencial.
 
-``origem``      de que modelo/componente ele deriva;
-``adaptacao``   qual substituição foi feita e por quê;
-``leitura``     em que direção o valor sugere risco.
-
-Classificação de evidência (usada no TCC para separar o que é literatura do
-que é proposta do autor):
-
+Classificação de evidência
+--------------------------
 ``LIT``   componente com correspondência direta na literatura citada;
 ``ADAP``  componente da literatura com substituição de conta para banco;
 ``PROP``  indicador sem correspondente nos modelos originais, proposto a
           partir do arcabouço prudencial (Res. CMN 2.682/1999, Basileia).
-          **Requer validação com o orientador**: não é achado consolidado.
+          **Sem validação empírica prévia**; contribuição exploratória.
+
+Convenção de sinais do IF.data
+------------------------------
+Provisões e despesas são publicadas com **sinal negativo**, de modo que as
+identidades contábeis se fecham por soma. Verificado nos arquivos::
+
+    Operações de Crédito (d1)  741.455.019
+    Provisão sobre Op. Crédito  -48.436.033
+    Operações Líquidas (d)      693.018.986   = soma exata
+
+Os indicadores que exigem magnitude aplicam valor absoluto de forma explícita,
+e cada fórmula abaixo indica quando isso ocorre.
 """
 
 from __future__ import annotations
@@ -54,38 +57,42 @@ class Indicador:
     chave: str
     origem: str
     evidencia: str          # LIT | ADAP | PROP
+    formula: str
     adaptacao: str
     leitura: str
     requisitos: tuple[str, ...]
 
 
 CATALOGO: tuple[Indicador, ...] = (
-    # ------------------- Analogias aos componentes de Dechow ---------------
+    # ------------------- Analogias a Dechow et al. (2011) ------------------
     Indicador(
         "soft_assets", "Dechow et al. (2011) — SOFT_ASSETS", "ADAP",
-        "Ativos 'moles' = Ativo total menos disponibilidades e menos imobilizado. "
+        "(Ativo total − Disponibilidades − Permanente) / Ativo total",
         "Conceito transporta bem para banco: mede a fracao do ativo cuja "
-        "mensuracao depende de estimativa e julgamento.",
+        "mensuracao depende de estimativa e julgamento. 'Disponibilidades' soma "
+        "caixa e aplicacoes interfinanceiras de liquidez.",
         "Quanto maior, maior a discricionariedade contabil disponivel.",
         ("ativo_total",),
     ),
     Indicador(
         "delta_carteira", "Dechow et al. (2011) — CH_REC", "ADAP",
-        "Recebiveis em banco = carteira de credito. Variacao da carteira sobre "
-        "ativo medio.",
-        "Crescimento acelerado da carteira sem provisao correspondente e sinal de risco.",
+        "Δ₄(Carteira de crédito) / Ativo médio",
+        "Recebiveis em banco correspondem a carteira de credito bruta, antes "
+        "da provisao.",
+        "Crescimento acelerado sem provisao correspondente e sinal de risco.",
         ("carteira_credito", "ativo_total"),
     ),
     Indicador(
         "delta_tvm", "Dechow et al. (2011) — CH_INV", "ADAP",
+        "Δ₄(TVM) / Ativo médio",
         "Nao existe estoque em banco. Substituido por titulos e valores "
-        "mobiliarios, que cumprem funcao analoga de ativo de giro sujeito a "
-        "mensuracao por valor justo.",
+        "mobiliarios, ativo de giro sujeito a mensuracao por valor justo.",
         "Variacao brusca pode indicar reclassificacao entre categorias de TVM.",
         ("tvm", "ativo_total"),
     ),
     Indicador(
         "delta_roa", "Dechow et al. (2011) — CH_ROA", "LIT",
+        "ROA(t) − ROA(t−4), com ROA = Lucro líquido / Ativo médio",
         "Aplicavel sem alteracao.",
         "Queda de ROA aumenta a pressao por manipulacao (elemento 'pressao' do "
         "triangulo da fraude).",
@@ -93,101 +100,146 @@ CATALOGO: tuple[Indicador, ...] = (
     ),
     Indicador(
         "accrual_bancario", "Dechow et al. (2011) — RSST_ACC / Beneish — TATA", "ADAP",
-        "Accrual total aproximado pela diferenca entre resultado e um proxy de "
-        "geracao de caixa. Sem DFC no IF.data, usa-se: (lucro liquido + despesa "
-        "de provisao - variacao de creditos operacionais) / ativo medio.",
+        "(Lucro líquido − proxy de caixa) / Ativo médio, com proxy de caixa = "
+        "Lucro líquido + |Despesa de provisão| − Δ₄(Outros créditos)",
+        "O IF.data nao publica demonstracao dos fluxos de caixa. O proxy soma "
+        "de volta a despesa de provisao — item sem efeito caixa no periodo — e "
+        "desconta a variacao de creditos operacionais. E APROXIMACAO DECLARADA.",
         "Accrual alto e persistente indica resultado sustentado por competencia, "
         "nao por caixa.",
         ("lucro_liquido", "ativo_total"),
     ),
-    Indicador(
-        "delta_capital", "Dechow et al. (2011) / Piotroski — EQ_OFFER", "ADAP",
-        "Indicador binario de aumento de capital social no trimestre.",
-        "Emissao de capital coincide com periodos de incentivo a reportar bem.",
-        ("capital_social",),
-    ),
 
-    # ------------------ Analogias aos componentes de Beneish ---------------
+    # ------------------ Analogias a Beneish (1999) -------------------------
     Indicador(
         "gmi_bancario", "Beneish (1999) — GMI", "ADAP",
-        "Margem bruta substituida pela margem financeira: resultado bruto da "
-        "intermediacao sobre ativo rentavel medio (NIM). GMI = NIM(t-1)/NIM(t).",
+        "NIM(t−4) / NIM(t), com NIM = Resultado de intermediação / Ativo médio",
+        "Margem bruta substituida pela margem financeira liquida (NIM), que "
+        "cumpre a mesma funcao economica em banco.",
         "GMI > 1 indica deterioracao de margem — pressao por compensar no resultado.",
         ("resultado_intermediacao", "ativo_total"),
     ),
     Indicador(
         "sgi_bancario", "Beneish (1999) — SGI", "ADAP",
+        "Carteira de crédito(t) / Carteira de crédito(t−4)",
         "Crescimento de vendas substituido por crescimento da carteira de credito.",
-        "Crescimento acelerado e o preditor isolado mais recorrente em episodios de "
-        "quebra bancaria; tambem e o instrumento GROWTH usado em Benyasrisawat e "
+        "Crescimento acelerado e o preditor isolado mais recorrente em episodios "
+        "de quebra bancaria; e tambem o instrumento GROWTH de Benyasrisawat e "
         "Ounlert (2026).",
         ("carteira_credito",),
     ),
     Indicador(
         "aqi_bancario", "Beneish (1999) — AQI", "ADAP",
-        "Qualidade do ativo = participacao de ativos de realizacao incerta "
-        "(outros creditos + intangivel + creditos tributarios) no ativo total.",
+        "(Outros créditos + Permanente) / Ativo total",
+        "Qualidade do ativo medida pela participacao de ativos de realizacao "
+        "incerta. O IF.data nao separa intangivel nem creditos tributarios: "
+        "ambos estao dentro de 'Permanente Ajustado'.",
         "Elevacao indica migracao do balanco para ativos de mensuracao frouxa.",
         ("ativo_total",),
     ),
     Indicador(
         "levi_bancario", "Beneish (1999) — LEVI", "ADAP",
-        "Alavancagem contabil (ativo/PL). Complementada, quando disponivel, pelo "
-        "indice de Basileia, que e a medida prudencial pertinente.",
-        "Alavancagem crescente com Basileia caindo em direcao ao minimo regulatorio "
-        "e a configuracao de maior pressao.",
+        "Ativo total / Patrimônio líquido",
+        "Alavancagem contabil. Complementada pelo indice de Basileia, que e a "
+        "medida prudencial pertinente.",
+        "Alavancagem crescente com Basileia caindo e a configuracao de maior pressao.",
         ("ativo_total", "patrimonio_liquido"),
     ),
     Indicador(
         "sgai_bancario", "Beneish (1999) — SGAI", "ADAP",
-        "Indice de eficiencia: despesas administrativas sobre receitas operacionais.",
+        "(|Despesa de pessoal| + |Despesa administrativa|) / "
+        "(Resultado de intermediação + Receita de serviços)",
+        "Indice de eficiencia operacional bancaria. Despesas vem com sinal "
+        "negativo no IF.data; aplica-se valor absoluto.",
         "Deterioracao da eficiencia aumenta pressao sobre o resultado.",
         ("despesa_administrativa", "resultado_intermediacao"),
     ),
 
-    # ------------- Indicadores prudenciais propostos (banco) ---------------
+    # ---------------- Prudenciais propostos (Res. 2.682, Basileia) ---------
     Indicador(
         "cobertura_provisao", "Proposto — Res. CMN 2.682/1999", "PROP",
-        "Saldo de provisao sobre carteira classificada em niveis E-H. Mede "
-        "suficiencia da provisao frente ao risco ja reconhecido.",
-        "Queda da cobertura com carteira E-H estavel ou crescente e o padrao "
-        "esperado de subprovisionamento.",
-        ("provisao_pcld", "carteira_eh"),
-    ),
-    Indicador(
-        "intensidade_provisao", "Proposto — Res. CMN 2.682/1999", "PROP",
-        "Despesa de provisao do periodo sobre carteira media.",
-        "Reducao abrupta sem melhora de inadimplencia sugere resultado inflado por "
-        "reversao ou nao constituicao de provisao.",
+        "|Provisão sobre operações de crédito| / Carteira de crédito bruta",
+        "O IF.data nao publica a carteira por nivel de risco (AA-H) nos "
+        "relatorios do recorte. A cobertura e medida sobre a carteira bruta, "
+        "nao sobre a carteira E-H. E medida menos sensivel: capta o nivel de "
+        "provisionamento, nao sua suficiencia frente ao risco ja reconhecido.",
+        "Queda da cobertura sem melhora correspondente de qualidade da carteira "
+        "e o padrao esperado de subprovisionamento.",
         ("provisao_pcld", "carteira_credito"),
     ),
     Indicador(
-        "descasamento_provisao_inad", "Proposto — supervisao prudencial", "PROP",
-        "Divergencia entre a variacao da inadimplencia e a variacao da despesa de "
-        "provisao (residuo padronizado da relacao entre as duas).",
-        "Inadimplencia subindo e provisao nao acompanhando e o descasamento de maior "
+        "intensidade_despesa_provisao", "Proposto — Res. CMN 2.682/1999", "PROP",
+        "|Despesa de provisão do período| / Carteira média",
+        "Fluxo, nao estoque: mede quanto foi constituido no trimestre. "
+        "Complementa a cobertura, que e saldo acumulado.",
+        "Reducao abrupta sem melhora de qualidade sugere resultado inflado por "
+        "nao constituicao ou reversao de provisao.",
+        ("despesa_provisao", "carteira_credito"),
+    ),
+    Indicador(
+        "descasamento_provisao", "Proposto — supervisão prudencial", "PROP",
+        "Δ₄(Cobertura de provisão) − Δ₄(Carteira/Ativo)",
+        "Divergencia entre a evolucao do provisionamento e a da exposicao a "
+        "credito. Substitui o descasamento provisao x inadimplencia, "
+        "inviavel por ausencia do indice de inadimplencia no IF.data.",
+        "Carteira crescendo com cobertura caindo e o descasamento de maior "
         "interesse para o auditor.",
-        ("provisao_pcld", "carteira_credito"),
+        ("provisao_pcld", "carteira_credito", "ativo_total"),
     ),
     Indicador(
-        "peso_credito_tributario", "Proposto — qualidade de capital", "PROP",
-        "Creditos tributarios sobre patrimonio liquido.",
-        "Capital sustentado por ativo fiscal diferido depende de lucro futuro; peso "
-        "alto e sinal de fragilidade de capital.",
-        ("creditos_tributarios", "patrimonio_liquido"),
-    ),
-    Indicador(
-        "folga_basileia", "Proposto — arcabouco de Basileia (BCB)", "PROP",
-        "Distancia do indice de Basileia ao minimo regulatorio aplicavel.",
-        "Folga pequena e persistente cria incentivo direto a gerenciar o RWA ou o "
-        "resultado.",
+        "folga_basileia", "Proposto — arcabouço de Basileia (BCB)", "PROP",
+        "Índice de Basileia − piso regulatório de referência",
+        "Distancia ao minimo. O piso aplicavel varia por instituicao e por data "
+        "com os adicionais de capital; usa-se piso fixo de referencia, "
+        "registrado como ponto de correcao.",
+        "Folga pequena e persistente cria incentivo direto a gerenciar o RWA ou "
+        "o resultado.",
         ("indice_basileia",),
     ),
     Indicador(
+        "qualidade_capital", "Proposto — arcabouço de Basileia (BCB)", "PROP",
+        "Capital principal / Patrimônio de referência",
+        "Fracao do capital regulatorio composta por capital principal, de "
+        "maior capacidade de absorcao de perdas.",
+        "Queda indica capital sustentado por instrumentos de qualidade inferior.",
+        ("capital_principal", "patrimonio_referencia"),
+    ),
+    Indicador(
         "dependencia_nao_recorrente", "Proposto — qualidade do resultado", "PROP",
-        "Peso de 'outras receitas operacionais' no resultado total.",
-        "Resultado concentrado em linha residual e sinal classico de nao recorrencia.",
-        ("outras_receitas_op", "lucro_liquido"),
+        "|Resultado não operacional| / |Resultado antes da tributação|",
+        "Peso do resultado nao operacional na formacao do lucro.",
+        "Resultado concentrado em linha nao recorrente e sinal classico de "
+        "qualidade baixa de lucro.",
+        ("resultado_nao_operacional", "resultado_antes_trib"),
+    ),
+    Indicador(
+        "carga_tributaria_efetiva", "Proposto — qualidade do resultado", "PROP",
+        "|IR e CSLL| / |Resultado antes da tributação|",
+        "Carga efetiva sobre o resultado. Sem correspondente nos modelos de "
+        "origem, mas classica em analise forense: divergencia persistente entre "
+        "carga efetiva e nominal sinaliza diferencas entre lucro contabil e "
+        "fiscal.",
+        "Carga muito abaixo da nominal, de forma persistente, merece exame.",
+        ("ir_csll", "resultado_antes_trib"),
+    ),
+    Indicador(
+        "concentracao_captacao", "Proposto — risco de liquidez", "PROP",
+        "Depósitos a prazo / Captações totais",
+        "Composicao da captacao. Deposito a prazo e a fonte mais sensivel a "
+        "percepcao de risco pelo mercado.",
+        "Concentracao elevada aumenta a vulnerabilidade a corrida de saques.",
+        ("depositos_prazo", "captacoes"),
+    ),
+    Indicador(
+        "discrepancia_carteira", "Proposto — consistência entre relatórios", "PROP",
+        "(Carteira classificada − Carteira contábil) / Carteira contábil",
+        "O IF.data publica a carteira em dois relatorios com definicoes "
+        "distintas: 'Carteira de Credito Classificada' no Resumo e 'Operacoes "
+        "de Credito' no Ativo. A divergencia entre elas e informacao, nao ruido.",
+        "Divergencia atipica entre as duas medidas sugere diferenca entre o "
+        "que foi classificado para fins de risco e o que foi registrado "
+        "contabilmente.",
+        ("carteira_classificada", "carteira_credito"),
     ),
 )
 
@@ -199,55 +251,48 @@ CATALOGO_POR_CHAVE = {i.chave: i for i in CATALOGO}
 # ---------------------------------------------------------------------------
 
 def _razao(num: pd.Series, den: pd.Series) -> pd.Series:
-    """Divisão protegida: denominador nulo ou negativo vira ausente.
-
-    Denominador negativo em banco (PL negativo, por exemplo) inverte o sinal do
-    indicador e produziria leitura invertida — preferimos ausente a errado.
-    """
+    """Divisão protegida: denominador nulo ou muito próximo de zero vira ausente."""
     den = den.where(den.abs() > EPS)
-    r = num / den
-    return r.replace([np.inf, -np.inf], np.nan)
+    return (num / den).replace([np.inf, -np.inf], np.nan)
 
 
-def _delta(df: pd.DataFrame, coluna: str, grupo: str = "cod_inst", passos: int = 4) -> pd.Series:
+def _delta(df: pd.DataFrame, coluna: str, passos: int = 4) -> pd.Series:
     """Variação em relação a ``passos`` trimestres atrás (4 = interanual).
 
     Comparação interanual, não trimestre contra trimestre: o balanço bancário
-    tem sazonalidade (dezembro concentra baixas e constituições) e a diferença
-    trimestral confundiria sazonalidade com anomalia.
+    tem sazonalidade — dezembro concentra baixas e constituições — e a
+    diferença trimestral confundiria sazonalidade com anomalia.
     """
     if coluna not in df.columns:
         return pd.Series(np.nan, index=df.index)
-    return df.groupby(grupo, sort=False)[coluna].diff(passos)
+    return df.groupby("cod_inst", sort=False)[coluna].diff(passos)
 
 
-def _defasagem(df: pd.DataFrame, coluna: str, grupo: str = "cod_inst", passos: int = 4) -> pd.Series:
+def _defasagem(df: pd.DataFrame, coluna: str, passos: int = 4) -> pd.Series:
     if coluna not in df.columns:
         return pd.Series(np.nan, index=df.index)
-    return df.groupby(grupo, sort=False)[coluna].shift(passos)
+    return df.groupby("cod_inst", sort=False)[coluna].shift(passos)
 
 
 def _tem(df: pd.DataFrame, *cols: str) -> bool:
     return all(c in df.columns and df[c].notna().any() for c in cols)
 
 
-def construir(df: pd.DataFrame) -> pd.DataFrame:
+def construir(df: pd.DataFrame, piso_basileia: float = 10.5) -> pd.DataFrame:
     """Constrói os indicadores a partir do painel de conceitos contábeis.
 
-    Espera ``df`` ordenado por (cod_inst, anomes) com colunas nomeadas segundo
-    :mod:`fraude_s2s3.mapeamento`. Indicadores sem insumo são omitidos e
-    reportados como ponto de correção — nunca preenchidos com zero.
+    Espera ``df`` com colunas nomeadas segundo :mod:`fraude_s2s3.consolidacao`.
+    Indicador sem insumo é **omitido e reportado** — nunca preenchido com zero.
     """
     df = df.sort_values(["cod_inst", "anomes"]).reset_index(drop=True)
-    out = df[["cod_inst", "anomes"]].copy()
-    if "segmento" in df.columns:
-        out["segmento"] = df["segmento"].values
+    out = df[[c for c in ("cod_inst", "anomes", "segmento", "Instituição")
+              if c in df.columns]].copy()
 
     ativo = df.get("ativo_total")
     ativo_medio = None
     if ativo is not None:
-        ativo_medio = (ativo + df.groupby("cod_inst", sort=False)["ativo_total"].shift(4)) / 2
-        ativo_medio = ativo_medio.fillna(ativo)
+        anterior = df.groupby("cod_inst", sort=False)["ativo_total"].shift(4)
+        ativo_medio = ((ativo + anterior) / 2).fillna(ativo)
 
     construidos: list[str] = []
     nao_construidos: list[tuple[str, str]] = []
@@ -259,10 +304,10 @@ def construir(df: pd.DataFrame) -> pd.DataFrame:
         out[chave] = serie.values
         construidos.append(chave)
 
-    # ---------------- Dechow adaptados ------------------------------------
+    # ------------------------- Dechow adaptados ---------------------------
     if _tem(df, "ativo_total"):
         moles = df["ativo_total"].copy()
-        for c in ("disponibilidades", "imobilizado"):
+        for c in ("disponibilidades", "permanente"):
             if c in df.columns:
                 moles = moles - df[c].fillna(0)
         registrar("soft_assets", _razao(moles, df["ativo_total"]))
@@ -271,12 +316,9 @@ def construir(df: pd.DataFrame) -> pd.DataFrame:
 
     if _tem(df, "carteira_credito", "ativo_total"):
         registrar("delta_carteira", _razao(_delta(df, "carteira_credito"), ativo_medio))
-        registrar(
-            "sgi_bancario",
-            _razao(df["carteira_credito"], _defasagem(df, "carteira_credito")),
-        )
+        registrar("sgi_bancario", _razao(df["carteira_credito"], _defasagem(df, "carteira_credito")))
     else:
-        registrar("delta_carteira", None, "carteira_credito/ativo_total ausentes")
+        registrar("delta_carteira", None, "carteira_credito ausente")
         registrar("sgi_bancario", None, "carteira_credito ausente")
 
     if _tem(df, "tvm", "ativo_total"):
@@ -289,42 +331,31 @@ def construir(df: pd.DataFrame) -> pd.DataFrame:
         out["roa"] = roa.values
         registrar("delta_roa", roa - roa.groupby(df["cod_inst"]).shift(4))
 
-        # Accrual bancário: sem DFC no IF.data, o proxy soma de volta a despesa
-        # de provisão (item sem efeito caixa no período) e desconta a variação
-        # de crédito operacional. É aproximação — está declarada como tal.
-        caixa_proxy = df["lucro_liquido"].copy()
+        caixa = df["lucro_liquido"].copy()
         if "despesa_provisao" in df.columns:
-            caixa_proxy = caixa_proxy + df["despesa_provisao"].fillna(0).abs()
+            caixa = caixa + df["despesa_provisao"].abs().fillna(0)
         if "outros_creditos" in df.columns:
-            caixa_proxy = caixa_proxy - _delta(df, "outros_creditos").fillna(0)
-        registrar("accrual_bancario", _razao(df["lucro_liquido"] - caixa_proxy, ativo_medio))
+            caixa = caixa - _delta(df, "outros_creditos").fillna(0)
+        registrar("accrual_bancario", _razao(df["lucro_liquido"] - caixa, ativo_medio))
     else:
-        registrar("delta_roa", None, "lucro_liquido/ativo_total ausentes")
-        registrar("accrual_bancario", None, "lucro_liquido/ativo_total ausentes")
+        registrar("delta_roa", None, "lucro_liquido ausente")
+        registrar("accrual_bancario", None, "lucro_liquido ausente")
 
-    if _tem(df, "capital_social"):
-        registrar("delta_capital", (_delta(df, "capital_social") > 0).astype(float))
-    else:
-        registrar("delta_capital", None, "capital_social ausente")
-
-    # ---------------- Beneish adaptados -----------------------------------
+    # ------------------------- Beneish adaptados --------------------------
     if _tem(df, "resultado_intermediacao", "ativo_total"):
         nim = _razao(df["resultado_intermediacao"], ativo_medio)
         out["nim"] = nim.values
-        nim_ant = nim.groupby(df["cod_inst"]).shift(4)
-        registrar("gmi_bancario", _razao(nim_ant, nim))
+        registrar("gmi_bancario", _razao(nim.groupby(df["cod_inst"]).shift(4), nim))
     else:
         registrar("gmi_bancario", None, "resultado_intermediacao ausente")
 
     if _tem(df, "ativo_total"):
-        opacos = pd.Series(0.0, index=df.index)
-        usou = False
-        for c in ("outros_creditos", "intangivel", "creditos_tributarios"):
+        opacos, usou = pd.Series(0.0, index=df.index), False
+        for c in ("outros_creditos", "permanente"):
             if c in df.columns:
-                opacos = opacos + df[c].fillna(0)
-                usou = True
+                opacos, usou = opacos + df[c].fillna(0), True
         registrar("aqi_bancario", _razao(opacos, df["ativo_total"]) if usou else None,
-                  "nenhum componente de ativo opaco disponivel")
+                  "componentes de ativo opaco ausentes")
     else:
         registrar("aqi_bancario", None, "ativo_total ausente")
 
@@ -334,55 +365,54 @@ def construir(df: pd.DataFrame) -> pd.DataFrame:
         registrar("levi_bancario", None, "patrimonio_liquido ausente")
 
     if _tem(df, "despesa_administrativa", "resultado_intermediacao"):
-        registrar(
-            "sgai_bancario",
-            _razao(df["despesa_administrativa"].abs(), df["resultado_intermediacao"].abs()),
-        )
+        despesas = df["despesa_administrativa"].abs().fillna(0)
+        if "despesa_pessoal" in df.columns:
+            despesas = despesas + df["despesa_pessoal"].abs().fillna(0)
+        receitas = df["resultado_intermediacao"].copy()
+        if "receita_servicos" in df.columns:
+            receitas = receitas + df["receita_servicos"].fillna(0)
+        registrar("sgai_bancario", _razao(despesas, receitas))
     else:
         registrar("sgai_bancario", None, "despesa_administrativa ausente")
 
-    # ---------------- Prudenciais propostos --------------------------------
-    if _tem(df, "provisao_pcld", "carteira_eh"):
-        registrar("cobertura_provisao", _razao(df["provisao_pcld"].abs(), df["carteira_eh"]))
-    else:
-        registrar("cobertura_provisao", None, "provisao_pcld/carteira_eh ausentes")
-
+    # --------------------- Prudenciais propostos --------------------------
     if _tem(df, "provisao_pcld", "carteira_credito"):
-        intensidade = _razao(df["provisao_pcld"].abs(), df["carteira_credito"])
-        registrar("intensidade_provisao", intensidade)
-        if "inadimplencia" in df.columns:
-            d_inad = _delta(df, "inadimplencia")
-            d_prov = intensidade - intensidade.groupby(df["cod_inst"]).shift(4)
-            registrar("descasamento_provisao_inad", d_inad - d_prov)
+        cobertura = _razao(df["provisao_pcld"].abs(), df["carteira_credito"])
+        registrar("cobertura_provisao", cobertura)
+        if _tem(df, "ativo_total"):
+            peso = _razao(df["carteira_credito"], df["ativo_total"])
+            d_cob = cobertura - cobertura.groupby(df["cod_inst"]).shift(4)
+            d_peso = peso - peso.groupby(df["cod_inst"]).shift(4)
+            registrar("descasamento_provisao", d_cob - d_peso)
         else:
-            registrar("descasamento_provisao_inad", None, "inadimplencia ausente")
+            registrar("descasamento_provisao", None, "ativo_total ausente")
     else:
-        registrar("intensidade_provisao", None, "provisao_pcld/carteira_credito ausentes")
-        registrar("descasamento_provisao_inad", None, "provisao_pcld ausente")
+        registrar("cobertura_provisao", None, "provisao_pcld/carteira_credito ausentes")
+        registrar("descasamento_provisao", None, "provisao_pcld ausente")
 
-    if _tem(df, "creditos_tributarios", "patrimonio_liquido"):
-        registrar("peso_credito_tributario",
-                  _razao(df["creditos_tributarios"], df["patrimonio_liquido"]))
+    if _tem(df, "despesa_provisao", "carteira_credito"):
+        carteira_media = ((df["carteira_credito"] + _defasagem(df, "carteira_credito")) / 2
+                          ).fillna(df["carteira_credito"])
+        registrar("intensidade_despesa_provisao",
+                  _razao(df["despesa_provisao"].abs(), carteira_media))
     else:
-        registrar("peso_credito_tributario", None, "creditos_tributarios ausente")
+        registrar("intensidade_despesa_provisao", None, "despesa_provisao ausente")
 
     if _tem(df, "indice_basileia"):
-        # PONTO DE ATENCAO: o minimo regulatorio varia no tempo e por
-        # instituicao (adicionais de conservacao/contraciclico). Aqui usa-se a
-        # distancia a um piso de referencia, e a escolha do piso e registrada.
-        piso = 10.5
-        registrar("folga_basileia", df["indice_basileia"] - piso)
+        registrar("folga_basileia", df["indice_basileia"] - piso_basileia)
         diagnostico.registrar(
             area=AREA,
-            item=f"Folga de Basileia calculada contra piso fixo de {piso}%.",
+            item=f"Folga de Basileia calculada contra piso fixo de {piso_basileia}%.",
             impacto=(
-                "O minimo aplicavel varia por instituicao e por data (adicionais de "
-                "capital principal). Um piso fixo desloca o indicador para parte da "
-                "amostra."
+                "O requerimento minimo varia por instituicao e por data-base com os "
+                "adicionais de capital principal. Um piso fixo desloca o indicador "
+                "para parte da amostra."
             ),
             acao=(
-                "Confirmar o requerimento minimo vigente por trimestre no recorte "
-                "2019-2024 e substituir o piso fixo por uma serie de requerimento. "
+                "Confirmar o requerimento vigente por trimestre no recorte e substituir "
+                "o piso fixo por uma serie de requerimento. O relatorio de Informacoes "
+                "de Capital publica 'Adicional de Capital Principal' a partir de 2023, "
+                "o que permite reconstruir parte da serie. "
                 "Area: indicadores.construir(), bloco 'folga_basileia'."
             ),
             severidade=diagnostico.Severidade.OBSERVA,
@@ -390,32 +420,54 @@ def construir(df: pd.DataFrame) -> pd.DataFrame:
     else:
         registrar("folga_basileia", None, "indice_basileia ausente")
 
-    if _tem(df, "outras_receitas_op", "lucro_liquido"):
-        registrar("dependencia_nao_recorrente",
-                  _razao(df["outras_receitas_op"].abs(), df["lucro_liquido"].abs()))
+    if _tem(df, "capital_principal", "patrimonio_referencia"):
+        registrar("qualidade_capital",
+                  _razao(df["capital_principal"], df["patrimonio_referencia"]))
     else:
-        registrar("dependencia_nao_recorrente", None, "outras_receitas_op ausente")
+        registrar("qualidade_capital", None, "capital_principal ausente")
+
+    if _tem(df, "resultado_nao_operacional", "resultado_antes_trib"):
+        registrar("dependencia_nao_recorrente",
+                  _razao(df["resultado_nao_operacional"].abs(),
+                         df["resultado_antes_trib"].abs()))
+    else:
+        registrar("dependencia_nao_recorrente", None, "resultado_nao_operacional ausente")
+
+    if _tem(df, "ir_csll", "resultado_antes_trib"):
+        registrar("carga_tributaria_efetiva",
+                  _razao(df["ir_csll"].abs(), df["resultado_antes_trib"].abs()))
+    else:
+        registrar("carga_tributaria_efetiva", None, "ir_csll ausente")
+
+    if _tem(df, "depositos_prazo", "captacoes"):
+        registrar("concentracao_captacao", _razao(df["depositos_prazo"], df["captacoes"]))
+    else:
+        registrar("concentracao_captacao", None, "depositos_prazo ausente")
+
+    if _tem(df, "carteira_classificada", "carteira_credito"):
+        registrar("discrepancia_carteira",
+                  _razao(df["carteira_classificada"] - df["carteira_credito"],
+                         df["carteira_credito"]))
+    else:
+        registrar("discrepancia_carteira", None, "carteira_classificada ausente")
 
     if nao_construidos:
         detalhe = "; ".join(f"{k} ({m})" for k, m in nao_construidos)
         propostos = [k for k, _ in nao_construidos
-                     if CATALOGO_POR_CHAVE.get(k, None) and CATALOGO_POR_CHAVE[k].evidencia == "PROP"]
+                     if CATALOGO_POR_CHAVE.get(k) and CATALOGO_POR_CHAVE[k].evidencia == "PROP"]
         diagnostico.registrar(
             area=AREA,
-            item=f"{len(nao_construidos)} indicador(es) nao puderam ser construidos: {detalhe}",
+            item=f"{len(nao_construidos)} indicador(es) nao construidos: {detalhe}",
             impacto=(
-                "O espaco de atributos efetivo e menor que o descrito na metodologia. "
-                + (
-                    "Entre os ausentes ha indicadores prudenciais propostos "
-                    f"({propostos}), justamente os que diferenciam esta pesquisa da "
-                    "aplicacao direta de modelos de empresa nao financeira."
-                    if propostos else ""
-                )
+                "O espaco de atributos efetivo e menor que o descrito na metodologia."
+                + (f" Entre os ausentes ha indicadores prudenciais propostos ({propostos}), "
+                   "que sao justamente os que diferenciam esta pesquisa da aplicacao "
+                   "direta de modelos de empresa nao financeira." if propostos else "")
             ),
             acao=(
-                "Ampliar a coleta com os relatorios do IF.data que contem os conceitos "
-                "faltantes, ou remover formalmente o indicador da metodologia (secao "
-                "3.2.2) para que texto e codigo descrevam a mesma coisa."
+                "Ampliar a coleta com os relatorios que contem os conceitos faltantes, ou "
+                "remover formalmente o indicador da metodologia para que texto e codigo "
+                "descrevam a mesma coisa. Area: indicadores.construir()."
             ),
             severidade=diagnostico.Severidade.COMPROMETE,
         )
@@ -427,30 +479,22 @@ def construir(df: pd.DataFrame) -> pd.DataFrame:
 
 def catalogo_df() -> pd.DataFrame:
     """Quadro de operacionalização das variáveis, para anexo do TCC."""
-    return pd.DataFrame(
-        [
-            {
-                "indicador": i.chave,
-                "origem": i.origem,
-                "evidencia": i.evidencia,
-                "adaptacao_realizada": i.adaptacao,
-                "leitura_de_risco": i.leitura,
-            }
-            for i in CATALOGO
-        ]
-    )
+    return pd.DataFrame([
+        {"indicador": i.chave, "origem": i.origem, "evidencia": i.evidencia,
+         "formula": i.formula, "adaptacao_realizada": i.adaptacao,
+         "leitura_de_risco": i.leitura}
+        for i in CATALOGO
+    ])
 
 
 def alerta_evidencia() -> str:
     """Texto pronto para a seção de limitações do TCC."""
-    n_prop = sum(1 for i in CATALOGO if i.evidencia == "PROP")
-    n_adap = sum(1 for i in CATALOGO if i.evidencia == "ADAP")
-    n_lit = sum(1 for i in CATALOGO if i.evidencia == "LIT")
+    n = {c: sum(1 for i in CATALOGO if i.evidencia == c) for c in ("LIT", "ADAP", "PROP")}
     return (
-        f"Dos {len(CATALOGO)} indicadores, {n_lit} tem correspondencia direta na "
-        f"literatura citada, {n_adap} sao adaptacoes de componentes existentes para "
-        f"o balanco bancario e {n_prop} sao proposicoes do autor derivadas do "
-        "arcabouco prudencial. Os indicadores da terceira categoria nao possuem "
-        "validacao empirica previa e devem ser tratados como contribuicao "
-        "exploratoria, sujeita a critica da banca."
+        f"Dos {len(CATALOGO)} indicadores, {n['LIT']} tem correspondencia direta na "
+        f"literatura citada, {n['ADAP']} sao adaptacoes de componentes existentes para o "
+        f"balanco bancario e {n['PROP']} sao proposicoes do autor derivadas do arcabouco "
+        "prudencial. Os indicadores da terceira categoria nao possuem validacao empirica "
+        "previa e devem ser tratados como contribuicao exploratoria, sujeita a critica "
+        "da banca."
     )

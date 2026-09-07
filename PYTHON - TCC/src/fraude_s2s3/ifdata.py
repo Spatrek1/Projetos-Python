@@ -26,6 +26,7 @@ que uma coleta em datas diferentes pode produzir painéis diferentes.
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import json
 import re
@@ -357,12 +358,47 @@ def carregar_ifdata_csv(caminho: Path | str, anomes: int | None = None) -> pd.Da
     ``anomes``, e com as colunas de valor já convertidas para float.
     """
     caminho = Path(caminho)
-    df = pd.read_csv(caminho, sep=";", encoding="utf-8-sig", dtype=str,
-                     keep_default_na=False, engine="python")
+
+    # ------------------------------------------------------------------
+    # Cabeçalho hierárquico.
+    #
+    # As exportações do IF.data usam de uma a três linhas de cabeçalho: a
+    # primeira traz os grupos sintéticos ("Operações de Crédito"), as demais
+    # detalham as contas analíticas ("Provisão sobre Operações de Crédito").
+    # Ler apenas a primeira linha perde as contas analíticas — que são
+    # justamente as que sustentam os indicadores prudenciais — e ainda trata
+    # as demais linhas de cabeçalho como se fossem instituições.
+    #
+    # A primeira linha de dados é identificada pelo código da instituição na
+    # segunda coluna (inteiro de seis ou mais dígitos). O nome de cada coluna
+    # é o rótulo do nível mais profundo preenchido.
+    # ------------------------------------------------------------------
+    with caminho.open(encoding="utf-8-sig", newline="") as fh:
+        todas = list(csv.reader(fh, delimiter=";"))
+    if not todas:
+        raise ErroColeta(f"Arquivo vazio: {caminho}")
+
+    i_dados = next(
+        (i for i, l in enumerate(todas)
+         if len(l) > 1 and re.fullmatch(r"\d{6,}", l[1].strip())),
+        1,
+    )
+    cabecalho = todas[:i_dados]
+    largura = max(len(l) for l in todas)
+
+    nomes: list[str] = []
+    for j in range(largura):
+        niveis = [l[j].strip() for l in cabecalho if j < len(l) and l[j].strip()]
+        nomes.append(niveis[-1] if niveis else "")
+
+    corpo = [l + [""] * (largura - len(l)) for l in todas[i_dados:]]
+    df = pd.DataFrame(corpo, columns=pd.Index(nomes, name=None), dtype=str)
+    df.attrs["linhas_cabecalho"] = i_dados
 
     # A exportação termina com ';', gerando uma coluna final sem nome.
     df = df.loc[:, [c for c in df.columns if str(c).strip() != ""]]
     df.columns = [str(c).strip() for c in df.columns]
+    df = df.loc[:, ~df.columns.duplicated(keep="first")]
 
     # Identificador da instituição.
     col_codigo = _primeira_coluna(df, r"^codigo$|^codinst$|^cnpj$")

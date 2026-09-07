@@ -47,10 +47,14 @@ def test_indicadores_constroem_e_declaram_ausencias():
 
 
 def test_indicadores_sem_insumo_nao_inventam_zero():
-    bruto = painel_artificial(n_instituicoes=6).drop(columns=["carteira_eh"])
+    """Insumo ausente omite o indicador; nao vira zero nem NaN silencioso."""
+    bruto = painel_artificial(n_instituicoes=6).drop(columns=["provisao_pcld"])
     ind = indicadores.construir(bruto)
-    assert "cobertura_provisao" not in ind.columns
-    assert "cobertura_provisao" in ind.attrs["indicadores_ausentes"]
+    for chave in ("cobertura_provisao", "descasamento_provisao"):
+        assert chave not in ind.columns, f"{chave} nao deveria existir sem provisao_pcld"
+        assert chave in ind.attrs["indicadores_ausentes"]
+    # os que nao dependem da provisao continuam presentes
+    assert "levi_bancario" in ind.columns
 
 
 def test_painel_particiona_no_tempo_sem_sobreposicao():
