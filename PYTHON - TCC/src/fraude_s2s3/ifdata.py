@@ -450,8 +450,9 @@ def carregar_ifdata_csv(caminho: Path | str, anomes: int | None = None) -> pd.Da
             diagnostico.registrar(
                 area=AREA,
                 item=(
-                    f"{len(legenda)} linha(s) de legenda/totais removidas de "
-                    f"{caminho.name} (rodape da exportacao do IF.data)."
+                    "Linhas de legenda e totais agregados removidas do rodape das "
+                    "exportacoes do IF.data. Ocorre em todas as exportacoes; "
+                    "tipicamente 40 linhas por arquivo."
                 ),
                 impacto=(
                     "Se mantidas, os totais agregados por segmento e por tipo de "
@@ -468,7 +469,12 @@ def carregar_ifdata_csv(caminho: Path | str, anomes: int | None = None) -> pd.Da
     # Colunas que permanecem texto; o resto é numérico.
     texto = {"cod_inst", "anomes"}
     for c in df.columns:
-        if re.search(r"instituic|cidade|^uf$|^tcb$|^sr$|^td$|^tc$|^data$",
+        # Colunas descritivas e de data permanecem texto. "Data da Última
+        # Alteração de Segmento" e as marcações "Instituição Sujeita à
+        # Apuração..." são categóricas: tentar convertê-las geraria pendência
+        # de conversão sem que houvesse defeito algum.
+        if re.search(r"instituic|cidade|^uf$|^tcb$|^tcip$|^sr$|^td$|^tc$|"
+                     r"^data|alteracaodesegmento|metodologiasimplificada",
                      _normalizar(c)):
             texto.add(c)
 

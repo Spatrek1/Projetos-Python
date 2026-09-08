@@ -46,6 +46,8 @@ import numpy as np
 import pandas as pd
 
 from . import diagnostico
+from .config import (PISO_BASILEIA_COOPERATIVA, PISO_BASILEIA_GERAL,
+                     TCB_COOPERATIVAS)
 
 AREA = "indicadores/adaptacao"
 
@@ -188,12 +190,36 @@ CATALOGO: tuple[Indicador, ...] = (
     ),
     Indicador(
         "folga_basileia", "Proposto — arcabouço de Basileia (BCB)", "PROP",
-        "Índice de Basileia − piso regulatório de referência",
-        "Distancia ao minimo. O piso aplicavel varia por instituicao e por data "
-        "com os adicionais de capital; usa-se piso fixo de referencia, "
-        "registrado como ponto de correcao.",
+        "Índice de Basileia − piso aplicável, com piso de 10,5 p.p. para "
+        "instituições sob regime pleno e faixa de 13 a 18 p.p. para "
+        "cooperativas de crédito (TCB b3S e b3C)",
+        "O requerimento de cooperativas situa-se em faixa, nao em valor unico, e "
+        "o IF.data nao publica o enquadramento que define a posicao exata. A "
+        "folga principal e medida contra o limite INFERIOR da faixa; a variante "
+        "'folga_basileia_conservadora' usa o limite superior, e "
+        "'basileia_zona_incerta' marca as observacoes em que a conclusao muda "
+        "conforme o piso adotado.",
         "Folga pequena e persistente cria incentivo direto a gerenciar o RWA ou "
         "o resultado.",
+        ("indice_basileia",),
+    ),
+    Indicador(
+        "folga_basileia_conservadora", "Proposto — arcabouço de Basileia (BCB)", "PROP",
+        "Índice de Basileia − limite SUPERIOR do piso aplicável (18 p.p. para "
+        "cooperativas; 10,5 p.p. para as demais)",
+        "Cenario conservador da folga de capital, para as cooperativas cujo "
+        "requerimento exato dentro da faixa nao e publicado.",
+        "Folga negativa aqui e positiva em 'folga_basileia' delimita a zona de "
+        "incerteza regulatoria.",
+        ("indice_basileia",),
+    ),
+    Indicador(
+        "basileia_zona_incerta", "Proposto — arcabouço de Basileia (BCB)", "PROP",
+        "1 se cooperativa com Índice de Basileia entre 13 e 18 p.p.; 0 caso contrário",
+        "Marcador das observacoes em que a conclusao sobre conformidade de "
+        "capital depende de qual ponto da faixa se adota.",
+        "Nao e indicador de risco: e sinalizador de incerteza de mensuracao, e "
+        "deve ser lido como tal.",
         ("indice_basileia",),
     ),
     Indicador(
@@ -278,14 +304,17 @@ def _tem(df: pd.DataFrame, *cols: str) -> bool:
     return all(c in df.columns and df[c].notna().any() for c in cols)
 
 
-def construir(df: pd.DataFrame, piso_basileia: float = 10.5) -> pd.DataFrame:
+def construir(df: pd.DataFrame,
+              piso_geral: float = PISO_BASILEIA_GERAL,
+              faixa_cooperativa: tuple[float, float] = PISO_BASILEIA_COOPERATIVA,
+              ) -> pd.DataFrame:
     """Constrói os indicadores a partir do painel de conceitos contábeis.
 
     Espera ``df`` com colunas nomeadas segundo :mod:`fraude_s2s3.consolidacao`.
     Indicador sem insumo é **omitido e reportado** — nunca preenchido com zero.
     """
     df = df.sort_values(["cod_inst", "anomes"]).reset_index(drop=True)
-    out = df[[c for c in ("cod_inst", "anomes", "segmento", "Instituição")
+    out = df[[c for c in ("cod_inst", "anomes", "segmento", "Instituição", "TCB", "SR")
               if c in df.columns]].copy()
 
     ativo = df.get("ativo_total")
@@ -399,26 +428,58 @@ def construir(df: pd.DataFrame, piso_basileia: float = 10.5) -> pd.DataFrame:
         registrar("intensidade_despesa_provisao", None, "despesa_provisao ausente")
 
     if _tem(df, "indice_basileia"):
-        registrar("folga_basileia", df["indice_basileia"] - piso_basileia)
+        piso_min, piso_max = faixa_cooperativa
+        e_coop = (df["TCB"].isin(TCB_COOPERATIVAS) if "TCB" in df.columns
+                  else pd.Series(False, index=df.index))
+
+        piso_aplicavel = pd.Series(piso_geral, index=df.index, dtype=float)
+        piso_aplicavel[e_coop] = piso_min
+        piso_conservador = pd.Series(piso_geral, index=df.index, dtype=float)
+        piso_conservador[e_coop] = piso_max
+
+        out["piso_basileia_aplicado"] = piso_aplicavel.values
+        registrar("folga_basileia", df["indice_basileia"] - piso_aplicavel)
+        registrar("folga_basileia_conservadora", df["indice_basileia"] - piso_conservador)
+
+        # Observações em que a conformidade depende de qual ponto da faixa vale.
+        incerta = (e_coop
+                   & df["indice_basileia"].ge(piso_min)
+                   & df["indice_basileia"].lt(piso_max))
+        registrar("basileia_zona_incerta", incerta.astype(float))
+
+        n_coop = int(e_coop.sum())
+        n_incerta = int(incerta.sum())
         diagnostico.registrar(
             area=AREA,
-            item=f"Folga de Basileia calculada contra piso fixo de {piso_basileia}%.",
+            item=(
+                f"Folga de Basileia: piso de {piso_geral} p.p. para instituicoes sob "
+                f"regime pleno e faixa de {piso_min}-{piso_max} p.p. para as "
+                f"{n_coop} observacao(oes) de cooperativas (TCB {list(TCB_COOPERATIVAS)}). "
+                f"{n_incerta} observacao(oes) caem dentro da faixa."
+            ),
             impacto=(
-                "O requerimento minimo varia por instituicao e por data-base com os "
-                "adicionais de capital principal. Um piso fixo desloca o indicador "
-                "para parte da amostra."
+                "Para as observacoes dentro da faixa, a conclusao sobre folga de capital "
+                "muda conforme o piso adotado: sao positivas contra o limite inferior e "
+                "negativas contra o superior. A coluna 'basileia_zona_incerta' as marca."
+                if n_incerta else
+                "Nenhuma observacao caiu dentro da faixa; a escolha do ponto da faixa nao "
+                "altera o sinal da folga nesta amostra."
             ),
             acao=(
-                "Confirmar o requerimento vigente por trimestre no recorte e substituir "
-                "o piso fixo por uma serie de requerimento. O relatorio de Informacoes "
-                "de Capital publica 'Adicional de Capital Principal' a partir de 2023, "
-                "o que permite reconstruir parte da serie. "
-                "Area: indicadores.construir(), bloco 'folga_basileia'."
+                "Confirmar o requerimento efetivamente aplicavel a cada cooperativa da "
+                "amostra — depende do enquadramento em regime prudencial simplificado, "
+                "informacao que o IF.data nao publica nos relatorios do recorte. Enquanto "
+                "nao confirmado, reportar a folga com a ressalva da faixa. "
+                "Area: indicadores.construir(), bloco 'folga_basileia'; parametros em "
+                "config.PISO_BASILEIA_GERAL e config.PISO_BASILEIA_COOPERATIVA."
             ),
-            severidade=diagnostico.Severidade.OBSERVA,
+            severidade=(diagnostico.Severidade.COMPROMETE if n_incerta
+                        else diagnostico.Severidade.OBSERVA),
         )
     else:
         registrar("folga_basileia", None, "indice_basileia ausente")
+        registrar("folga_basileia_conservadora", None, "indice_basileia ausente")
+        registrar("basileia_zona_incerta", None, "indice_basileia ausente")
 
     if _tem(df, "capital_principal", "patrimonio_referencia"):
         registrar("qualidade_capital",

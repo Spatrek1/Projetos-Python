@@ -93,23 +93,21 @@ e caixa, e aceita mês com um ou dois dígitos.
 
 ---
 
-## 2. Problema encontrado na base
+## 2. Situação da base
 
-**`dados 2020-06 Resumo.csv` contém o relatório Segmentação, não o Resumo.**
+O arquivo `dados 2020-06 Resumo.csv` da primeira versão continha o relatório
+Segmentação. **Corrigido pelo autor**: a verificação por assinatura de conteúdo
+não encontra mais divergência entre o relatório indicado no nome e o efetivo.
 
-Verificado por assinatura de conteúdo: o arquivo traz as colunas
-`Instituição Sujeita à Apuração da Exposição Total` e
-`Exposição Total ou Ativo Total (R$ mil)`, características da Segmentação, e
-não traz `Carteira de Crédito Classificada`.
+Base íntegra: 144 arquivos, 24 trimestres × 6 relatórios, nenhum divergente.
 
-**Consequência.** Os conceitos exclusivos do Resumo ficam ausentes em 2020-06:
-`carteira_classificada`, `numero_agencias` e `exposicao_total` aparecem com
-cerca de 4% de ausência (1 trimestre em 24). O indicador
-`discrepancia_carteira` fica indefinido nessa data-base e, por depender de
-comparação interanual em outros indicadores, o efeito se propaga.
+### Verificação automática mantida
 
-**Correção necessária.** Rebaixar o relatório Resumo de 06/2020 no IF.data e
-substituir o arquivo. O restante da base está íntegro.
+A conferência por assinatura permanece no pipeline
+(`consolidacao._conferir_conteudo`). Arquivo salvo com o nome de um relatório e
+o conteúdo de outro é o erro de download mais difícil de perceber: o pipeline
+leria colunas inexistentes e produziria ausências em cadeia, sem que a origem
+ficasse evidente.
 
 ---
 
@@ -442,8 +440,52 @@ dentro de (segmento, trimestre) — absorve esses extremos sem descartar
 observações. A winsorização por trimestre, e não global, preserva a comparação
 transversal, já que as contas mudam de escala ao longo do período.
 
-Registro para o TCC: `folga_basileia` tem mínimo de −1,46, indicando pelo menos
-uma instituição-trimestre abaixo do piso de referência de 10,5%. A verificação
-do requerimento efetivamente aplicável a essa instituição naquela data-base é
-ponto de correção aberto.
+---
+
+## 8. Piso de capital regulatório
+
+Parâmetros adotados, conforme instrução do autor:
+
+| Grupo | Identificação (TCB) | Piso |
+|---|---|---|
+| Regime pleno | todos exceto os abaixo | **10,5 p.p.** |
+| Cooperativas de crédito | `b3S` (singulares) e `b3C` (centrais e confederações) | **faixa de 13 a 18 p.p.** |
+
+Os códigos `b3S` e `b3C` vêm da legenda publicada pelo próprio IF.data no rodapé
+das exportações.
+
+### Tratamento da faixa
+
+O requerimento das cooperativas situa-se em faixa, não em valor único, e o
+IF.data não publica, nos relatórios do recorte, o enquadramento que define a
+posição exata de cada uma. Em vez de escolher um ponto arbitrário, o pipeline
+calcula os dois extremos e sinaliza onde a escolha importa:
+
+| Coluna | Definição |
+|---|---|
+| `folga_basileia` | Índice − piso aplicável (13 p.p. para cooperativas) |
+| `folga_basileia_conservadora` | Índice − limite superior (18 p.p. para cooperativas) |
+| `basileia_zona_incerta` | 1 quando cooperativa tem Índice entre 13 e 18 p.p. |
+| `piso_basileia_aplicado` | O piso efetivamente usado em cada linha |
+
+### Resultado na amostra
+
+| Grupo | Observações | Instituições | Folga mediana | Folga conservadora | Folga negativa |
+|---|---|---|---|---|---|
+| Cooperativas | 111 | 10 | 9,25 p.p. | 4,25 p.p. | 0 |
+| Demais | 1.236 | 62 | 5,80 p.p. | 5,80 p.p. | 12 |
+
+**Zona de incerteza: 42 observações em 7 instituições** — todas centrais de
+cooperativas de crédito, com Índice de Basileia entre 13 e 18 p.p. Para essas,
+a conclusão sobre folga de capital muda conforme o ponto da faixa adotado:
+positiva contra 13, negativa contra 18.
+
+Como a coluna `basileia_zona_incerta` as marca individualmente, o TCC pode
+reportar o resultado com a ressalva delimitada, sem precisar de uma decisão
+arbitrária sobre o ponto da faixa. A confirmação do enquadramento efetivo
+dessas sete cooperativas permanece como ponto de correção aberto.
+
+Registro adicional: 12 observações de instituições sob regime pleno apresentam
+folga negativa contra o piso de 10,5 p.p. — merecem verificação individual do
+requerimento aplicável na data-base correspondente.
 

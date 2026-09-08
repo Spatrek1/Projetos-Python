@@ -42,6 +42,28 @@ FAIXAS_SEGMENTO = {
 }
 
 
+#: Piso de capital regulatório de referência, em pontos percentuais do RWA.
+#:
+#: Instituições sujeitas ao regime pleno de Basileia têm requerimento mínimo
+#: acrescido dos adicionais de capital principal. Cooperativas de crédito
+#: enquadradas em regime prudencial simplificado observam requerimento próprio,
+#: situado em uma faixa e não em valor único.
+#:
+#: Como a posição exata de cada cooperativa dentro da faixa depende do seu
+#: enquadramento — informação que o IF.data não publica nos relatórios do
+#: recorte —, o pipeline calcula a folga contra os DOIS extremos e sinaliza as
+#: observações em que a conclusão depende dessa escolha. Ver PONTO DE CORREÇÃO
+#: registrado por `indicadores.construir()`.
+PISO_BASILEIA_GERAL = 10.5
+PISO_BASILEIA_COOPERATIVA = (13.0, 18.0)
+
+#: Códigos de "Tipo de Consolidado Bancário" (TCB) que identificam cooperativas
+#: de crédito, conforme a legenda publicada pelo próprio IF.data:
+#:   b3S — Cooperativa de Crédito Singulares
+#:   b3C — Central e Confederação de Cooperativas de Crédito
+TCB_COOPERATIVAS = ("b3S", "b3C")
+
+
 # ---------------------------------------------------------------------------
 # 2. Coleta
 # ---------------------------------------------------------------------------
