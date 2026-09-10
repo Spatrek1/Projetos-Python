@@ -1,0 +1,20 @@
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv/
+tempCodeRunnerFile.py
+
+# Base bruta do IF.data: reproduzivel a partir da fonte, nao versionada.
+dados/ifdata_bruto/*
+!dados/ifdata_bruto/.gitkeep
+!dados/ifdata_bruto/CHECKLIST_DOWNLOADS.md
+
+# Saidas do processamento: geradas por processar_base.py.
+dados/tratados/*
+!dados/tratados/.gitkeep
+resultados/*
+!resultados/.gitkeep
+
+# Dados externos fornecidos pelo pesquisador.
+dados/externos/*.csv
+!dados/externos/eventos_publicos_MODELO.csv

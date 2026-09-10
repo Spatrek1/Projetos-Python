@@ -19,9 +19,9 @@ quais conceitos o IF.data realmente entrega.
 
 Uso:
 
-    cd "C:\\Documentos\\Projetos-Python\\PYTHON - TCC"
+    cd "C:\\Documentos\\Projetos-Python\\TCC_S2S3"
     python testes\\validar_extracao_manual.py
-    python testes\\validar_extracao_manual.py dados\\brutos\\balanco
+    python testes\\validar_extracao_manual.py dados\\ifdata_bruto\\balanco
 """
 
 from __future__ import annotations

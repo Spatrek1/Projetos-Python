@@ -4,7 +4,7 @@ Documento de transferência. Uma sessão nova do Claude Code não tem acesso ao
 histórico da conversa anterior — este arquivo reconstrói o estado do trabalho.
 
 **Como usar:** abra `C:\Documentos\Projetos-Python` no Claude Code e diga:
-*"Leia PYTHON - TCC/CONTEXTO_PARA_SESSAO_LOCAL.md e continue de onde parou."*
+*"Leia TCC_S2S3/CONTEXTO_PARA_SESSAO_LOCAL.md e continue de onde parou."*
 
 ---
 

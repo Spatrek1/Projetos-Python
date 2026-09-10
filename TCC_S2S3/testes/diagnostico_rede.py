@@ -12,7 +12,7 @@ as situações que costumam ser confundidas entre si:
 
 Uso:
 
-    cd "C:\\Documentos\\Projetos-Python\\PYTHON - TCC"
+    cd "C:\\Documentos\\Projetos-Python\\TCC_S2S3"
     python testes\\diagnostico_rede.py
 """
 
@@ -261,7 +261,7 @@ def plano_b() -> None:
   1) Abra o IF.data no navegador (site do Banco Central).
   2) Selecione a data-base (trimestre) e o relatorio desejado.
   3) Baixe o CSV.
-  4) Salve em  dados\\brutos\\  incluindo o periodo AAAAMM no nome:
+  4) Salve em  dados\\ifdata_bruto\\  incluindo o periodo AAAAMM no nome:
          ativo_201903.csv,  ativo_201906.csv,  ...
   5) No notebook, na secao 3.2, troque a coleta por:
 
@@ -283,7 +283,7 @@ def main() -> int:
         base = CONFIG.coleta.base_url
     except Exception as e:
         print(f"\n  Nao foi possivel importar a configuracao do projeto: {e}")
-        print("  Rode a partir da pasta 'PYTHON - TCC'.")
+        print("  Rode a partir da pasta 'TCC_S2S3'.")
         return 1
 
     host = urllib.parse.urlparse(base).hostname or "olinda.bcb.gov.br"

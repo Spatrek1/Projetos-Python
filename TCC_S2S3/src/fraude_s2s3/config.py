@@ -13,8 +13,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[2]
-DIR_BRUTOS = RAIZ / "dados" / "brutos"
-DIR_PROCESSADOS = RAIZ / "dados" / "processados"
+DIR_BRUTOS = RAIZ / "dados" / "ifdata_bruto"
+DIR_PROCESSADOS = RAIZ / "dados" / "tratados"
 DIR_EXTERNOS = RAIZ / "dados" / "externos"
 DIR_RESULTADOS = RAIZ / "resultados"
 

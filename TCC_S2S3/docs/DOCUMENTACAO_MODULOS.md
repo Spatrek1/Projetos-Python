@@ -118,7 +118,7 @@ O módulo **não presume o contrato da API**. A sequência é:
    e campos de cada tipo
 3. Só então monta as requisições, casando os parâmetros pedidos com os que o
    recurso realmente declara
-4. Grava cada resposta em `dados/brutos/` com carimbo de data
+4. Grava cada resposta em `dados/ifdata_bruto/` com carimbo de data
 
 **Por que assim.** Nomes de recurso e coluna mudam entre versões da API. Uma
 coluna presumida que não existe vira `NaN`; `NaN` imputado vira "valor típico";

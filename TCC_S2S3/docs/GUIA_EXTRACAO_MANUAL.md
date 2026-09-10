@@ -107,7 +107,7 @@ bruto_longo = cliente.coletar_painel(RELATORIOS, TIPOS_INSTITUICAO)
 
 Varre período × relatório × tipo. Falhas isoladas **não** interrompem a
 varredura: são registradas e o período fica ausente, o que a seção 16 reporta.
-Cada resposta é gravada em `dados/brutos/` com carimbo de data.
+Cada resposta é gravada em `dados/ifdata_bruto/` com carimbo de data.
 
 **5. Anote a data de coleta**
 
@@ -266,11 +266,11 @@ segmentação. Confirme com seu orientador.
 ### Preparação
 
 ```powershell
-cd "C:\Documentos\Projetos-Python\PYTHON - TCC"
-mkdir dados\brutos\balanco
-mkdir dados\brutos\resultado
-mkdir dados\brutos\carteira
-mkdir dados\brutos\capital
+cd "C:\Documentos\Projetos-Python\TCC_S2S3"
+mkdir dados\ifdata_bruto\balanco
+mkdir dados\ifdata_bruto\resultado
+mkdir dados\ifdata_bruto\carteira
+mkdir dados\ifdata_bruto\capital
 ```
 
 Uma subpasta por relatório. Isso facilita conferir cobertura por relatório e
@@ -358,10 +358,10 @@ balanco_0319.csv          ano com dois dígitos
 Antes de qualquer modelagem:
 
 ```powershell
-python testes\validar_extracao_manual.py dados\brutos\balanco
-python testes\validar_extracao_manual.py dados\brutos\resultado
-python testes\validar_extracao_manual.py dados\brutos\carteira
-python testes\validar_extracao_manual.py dados\brutos\capital
+python testes\validar_extracao_manual.py dados\ifdata_bruto\balanco
+python testes\validar_extracao_manual.py dados\ifdata_bruto\resultado
+python testes\validar_extracao_manual.py dados\ifdata_bruto\carteira
+python testes\validar_extracao_manual.py dados\ifdata_bruto\capital
 ```
 
 O script confere cinco coisas:
@@ -545,7 +545,7 @@ Anote e inclua no TCC:
 | **Trimestres ausentes** | Se houver, e a razão |
 | **Preferências de mapeamento** | Ambiguidades resolvidas manualmente |
 
-Modelo sugerido para `dados/brutos/PROCEDENCIA.md`:
+Modelo sugerido para `dados/ifdata_bruto/PROCEDENCIA.md`:
 
 ```markdown
 # Procedência dos dados

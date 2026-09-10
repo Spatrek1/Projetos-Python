@@ -2,16 +2,16 @@
 
 Uso
 ---
-    cd "C:\\Documentos\\Projetos-Python\\PYTHON - TCC"
+    cd "C:\\Documentos\\Projetos-Python\\TCC_S2S3"
     python processar_base.py
 
-Procura a base em ``dados/brutos/`` automaticamente. Para apontar outro lugar::
+Procura a base em ``dados/ifdata_bruto/`` automaticamente. Para apontar outro lugar::
 
     python processar_base.py "D:\\algum\\outro\\caminho\\IF DATA BASE"
 
 Saída
 -----
-Grava em ``dados/processados/``:
+Grava em ``dados/tratados/``:
 
     painel_conceitos_completo.csv   todas as instituições, todos os conceitos
     painel_conceitos_S2S3.csv       recorte da pesquisa
@@ -45,7 +45,7 @@ def localizar_base(argumento: str | None) -> Path | None:
         p = Path(argumento)
         return p if p.exists() else None
 
-    brutos = RAIZ / "dados" / "brutos"
+    brutos = RAIZ / "dados" / "ifdata_bruto"
     if not brutos.exists():
         return None
 
@@ -54,7 +54,7 @@ def localizar_base(argumento: str | None) -> Path | None:
                   if d.is_dir() and any(d.glob("*/*/*.csv"))]
     if candidatas:
         return candidatas[0]
-    # Ou os anos podem estar diretamente em dados/brutos.
+    # Ou os anos podem estar diretamente em dados/ifdata_bruto.
     if any(brutos.glob("*/*/*.csv")):
         return brutos
     return None
@@ -72,9 +72,9 @@ def main() -> int:
     base = localizar_base(sys.argv[1] if len(sys.argv) > 1 else None)
     if base is None:
         print("\n  Base nao encontrada.")
-        print(f"\n  Esperado em: {RAIZ / 'dados' / 'brutos'}")
+        print(f"\n  Esperado em: {RAIZ / 'dados' / 'ifdata_bruto'}")
         print("\n  Estrutura esperada:")
-        print("      dados\\brutos\\IF DATA BASE\\2019\\201903\\dados 2019-03 Ativo.csv")
+        print("      dados\\ifdata_bruto\\IF DATA BASE\\2019\\201903\\dados 2019-03 Ativo.csv")
         print("                                \\2019\\201906\\...")
         print("\n  Ou informe o caminho:")
         print('      python processar_base.py "D:\\caminho\\IF DATA BASE"')
@@ -133,7 +133,7 @@ def main() -> int:
     print("\n" + "-" * LARGURA)
     print("4. Gravacao")
     print("-" * LARGURA)
-    saida = RAIZ / "dados" / "processados"
+    saida = RAIZ / "dados" / "tratados"
     externos = RAIZ / "dados" / "externos"
     saida.mkdir(parents=True, exist_ok=True)
     externos.mkdir(parents=True, exist_ok=True)
@@ -155,7 +155,7 @@ def main() -> int:
     print("\n" + diagnostico.relatorio(largura=LARGURA))
 
     print("\nProximo passo: abrir notebooks/00_pipeline_s2_s3.ipynb e seguir da secao 7,")
-    print("carregando dados/processados/painel_indicadores_S2S3.csv.")
+    print("carregando dados/tratados/painel_indicadores_S2S3.csv.")
     return 1 if diagnostico.ha_bloqueio() else 0
 
 

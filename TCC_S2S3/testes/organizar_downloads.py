@@ -15,8 +15,8 @@ Comandos
 
     python testes\\organizar_downloads.py --criar-pastas
     python testes\\organizar_downloads.py --checklist
-    python testes\\organizar_downloads.py --renomear dados\\brutos\\balanco --relatorio balanco
-    python testes\\organizar_downloads.py --renomear dados\\brutos\\balanco --relatorio balanco --aplicar
+    python testes\\organizar_downloads.py --renomear dados\\ifdata_bruto\\balanco --relatorio balanco
+    python testes\\organizar_downloads.py --renomear dados\\ifdata_bruto\\balanco --relatorio balanco --aplicar
 
 Sem ``--aplicar`` nada é alterado: o script apenas mostra o que faria.
 """
@@ -121,7 +121,7 @@ def checklist() -> int:
         "Ao terminar cada coluna, rode:",
         "",
         "```powershell",
-        "python testes\\organizar_downloads.py --renomear dados\\brutos\\<relatorio> --relatorio <relatorio>",
+        "python testes\\organizar_downloads.py --renomear dados\\ifdata_bruto\\<relatorio> --relatorio <relatorio>",
         "```",
         "",
         "Confira o mapeamento na tela e repita com `--aplicar`.",
@@ -244,7 +244,7 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     ap.add_argument("--criar-pastas", action="store_true",
-                    help="cria dados/brutos/<relatorio> para cada relatorio")
+                    help="cria dados/ifdata_bruto/<relatorio> para cada relatorio")
     ap.add_argument("--checklist", action="store_true",
                     help="gera a lista de controle dos downloads")
     ap.add_argument("--renomear", metavar="PASTA",

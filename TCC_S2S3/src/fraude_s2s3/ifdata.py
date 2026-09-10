@@ -18,7 +18,7 @@ nos dois caminhos.
 
 Aviso de reprodutibilidade
 --------------------------
-Toda resposta bem-sucedida é gravada em ``dados/brutos/`` com o carimbo da
+Toda resposta bem-sucedida é gravada em ``dados/ifdata_bruto/`` com o carimbo da
 data de coleta. O TCC deve citar essa data: o IF.data admite *republicação*
 de períodos anteriores quando a instituição reapresenta documento, de modo
 que uma coleta em datas diferentes pode produzir painéis diferentes.
