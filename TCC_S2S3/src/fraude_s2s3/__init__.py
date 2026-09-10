@@ -27,9 +27,9 @@ import importlib
 __version__ = "0.1.0"
 
 _SUBMODULOS = (
-    "avaliacao", "baselines", "benford", "config", "diagnostico", "ifdata",
-    "indicadores", "interpretacao", "mapeamento", "painel", "redes",
-    "segmentacao", "vazamento",
+    "avaliacao", "baselines", "benford", "config", "consolidacao",
+    "diagnostico", "ifdata", "indicadores", "interpretacao", "mapeamento",
+    "painel", "redes", "segmentacao", "testes_analiticos", "vazamento",
 )
 
 #: Bibliotecas de terceiros exigidas por cada submódulo, para produzir uma
@@ -38,6 +38,7 @@ _DEPENDENCIAS = {
     "avaliacao": ("pandas", "numpy", "scipy", "scikit-learn"),
     "baselines": ("pandas", "numpy", "scikit-learn"),
     "benford": ("pandas", "numpy"),
+    "consolidacao": ("pandas", "numpy"),
     "ifdata": ("pandas", "requests"),
     "indicadores": ("pandas", "numpy"),
     "interpretacao": ("pandas", "numpy"),
@@ -45,6 +46,7 @@ _DEPENDENCIAS = {
     "painel": ("pandas", "numpy"),
     "redes": ("numpy", "torch"),
     "segmentacao": ("pandas", "numpy"),
+    "testes_analiticos": ("pandas", "numpy"),
     "vazamento": ("pandas", "numpy"),
 }
 

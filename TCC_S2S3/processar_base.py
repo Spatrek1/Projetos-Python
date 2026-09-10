@@ -63,7 +63,8 @@ def localizar_base(argumento: str | None) -> Path | None:
 def main() -> int:
     import pandas as pd
 
-    from fraude_s2s3 import consolidacao, diagnostico, indicadores, segmentacao
+    from fraude_s2s3 import (consolidacao, diagnostico, indicadores,
+                             segmentacao, testes_analiticos)
 
     print("=" * LARGURA)
     print("PROCESSAMENTO DA BASE IF.data".center(LARGURA))
@@ -138,7 +139,21 @@ def main() -> int:
     saida.mkdir(parents=True, exist_ok=True)
     externos.mkdir(parents=True, exist_ok=True)
 
+    # Testes analiticos: os seis procedimentos substantivos, um por parametro
+    # obrigatorio. Independem de treino, particao e semente, e por isso rodam
+    # aqui — o resultado e reproduzivel por qualquer terceiro a partir da base.
+    sinal = testes_analiticos.aplicar(ind)
+    foco = testes_analiticos.foco_de_exame(sinal)
+
     arquivos = {
+        saida / "testes_analiticos_sinalizacoes.csv": sinal,
+        saida / "testes_analiticos_foco_de_exame.csv": foco,
+        saida / "testes_analiticos_resumo.csv": testes_analiticos.resumo(sinal),
+        saida / "testes_analiticos_persistencia.csv":
+            testes_analiticos.classificar_persistencia(sinal),
+        saida / "testes_analiticos_sensibilidade.csv":
+            testes_analiticos.sensibilidade(ind),
+        saida / "quadro_testes_analiticos.csv": testes_analiticos.catalogo_df(),
         saida / "painel_conceitos_completo.csv": painel,
         saida / "painel_conceitos_S2S3.csv": alvo,
         saida / "painel_indicadores_S2S3.csv": ind,
@@ -151,6 +166,12 @@ def main() -> int:
     for caminho, quadro in arquivos.items():
         quadro.to_csv(caminho, index=False, encoding="utf-8-sig")
         print(f"    {caminho.relative_to(RAIZ)}  ({caminho.stat().st_size:,} bytes)")
+
+    print("\n  Testes analiticos (limiar "
+          f"{testes_analiticos.LIMIAR_PADRAO} desvios frente aos pares):")
+    print(testes_analiticos.resumo(sinal).to_string(index=False))
+    print(f"\n  Foco de exame apos excluir sinalizacao estrutural: {len(foco)} "
+          f"observacoes de {foco['cod_inst'].nunique()} instituicoes.")
 
     print("\n" + diagnostico.relatorio(largura=LARGURA))
 

@@ -85,6 +85,17 @@ CATALOGO: tuple[Indicador, ...] = (
         ("carteira_credito", "ativo_total"),
     ),
     Indicador(
+        "peso_carteira", "Condicao de escopo (proposto)", "PROP",
+        "Carteira de crédito / Ativo total",
+        "Nao e indicador de manipulacao, e condicao de materialidade. Distingue "
+        "instituicao de varejo de banco de atacado e de investimento, distincao "
+        "que a segmentacao S1-S5 da Res. CMN 4.553/2017 nao captura: ela ordena "
+        "por porte e relevancia sistemica, nao por modelo de negocio.",
+        "Abaixo de 10% o credito e parcela imaterial do balanco e as razoes "
+        "construidas sobre a carteira deixam de ser comparaveis as dos pares.",
+        ("carteira_credito", "ativo_total"),
+    ),
+    Indicador(
         "delta_tvm", "Dechow et al. (2011) — CH_INV", "ADAP",
         "Δ₄(TVM) / Ativo médio",
         "Nao existe estoque em banco. Substituido por titulos e valores "
@@ -346,9 +357,15 @@ def construir(df: pd.DataFrame,
     if _tem(df, "carteira_credito", "ativo_total"):
         registrar("delta_carteira", _razao(_delta(df, "carteira_credito"), ativo_medio))
         registrar("sgi_bancario", _razao(df["carteira_credito"], _defasagem(df, "carteira_credito")))
+        # Participacao do credito no ativo. Serve de condicao de escopo: onde o
+        # credito e parcela imaterial do balanco, as razoes construidas sobre a
+        # carteira (cobertura de provisao, crescimento) nao sao economicamente
+        # comparaveis as de uma instituicao de varejo.
+        registrar("peso_carteira", _razao(df["carteira_credito"], df["ativo_total"]))
     else:
         registrar("delta_carteira", None, "carteira_credito ausente")
         registrar("sgi_bancario", None, "carteira_credito ausente")
+        registrar("peso_carteira", None, "carteira_credito ausente")
 
     if _tem(df, "tvm", "ativo_total"):
         registrar("delta_tvm", _razao(_delta(df, "tvm"), ativo_medio))

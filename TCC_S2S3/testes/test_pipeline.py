@@ -22,7 +22,7 @@ sys.path.insert(0, str(RAIZ / "testes"))
 from fixture_fumaca import eventos_artificiais, painel_artificial  # noqa: E402
 from fraude_s2s3 import (avaliacao, baselines, benford, diagnostico,  # noqa: E402
                          indicadores, interpretacao, mapeamento, painel,
-                         redes, vazamento)
+                         redes, testes_analiticos, vazamento)
 
 
 def test_mapeamento_resolve_conceitos_principais():
@@ -172,6 +172,78 @@ def test_diagnostico_produz_relatorio():
     assert "PONTOS DE CORRECAO" in texto
     assert len(diagnostico.pendencias()) > 0
     assert isinstance(diagnostico.para_dataframe(), pd.DataFrame)
+
+
+def _painel_para_testes():
+    ind = indicadores.construir(painel_artificial(n_instituicoes=24))
+    ind["segmento"] = np.where(ind["cod_inst"].astype(str).str[-1].astype(int) < 3, "S2", "S3")
+    return ind
+
+
+def test_testes_analiticos_cobrem_os_seis_parametros():
+    ancoras = {t.parametro for t in testes_analiticos.CATALOGO}
+    assert ancoras == {"provisao_pcld", "carteira_credito", "ativo_total",
+                       "patrimonio_liquido", "resultado_intermediacao", "lucro_liquido"}
+    quadro = testes_analiticos.catalogo_df()
+    assert len(quadro) == 6
+    assert quadro["procedimento_de_auditoria"].str.len().min() > 40
+
+
+def test_sinalizacao_e_monotonica_no_limiar():
+    """Limiar mais exigente nao pode sinalizar mais.
+
+    Protege contra condicoes corroborantes com patamar fixo, que tornariam a
+    taxa insensivel ao parametro e a analise de sensibilidade vazia.
+    """
+    ind = _painel_para_testes()
+    sens = testes_analiticos.sensibilidade(ind, limiares=(2.0, 3.0, 4.0))
+    for t in testes_analiticos.CATALOGO:
+        serie = sens[t.codigo].dropna().tolist()
+        assert serie == sorted(serie, reverse=True), f"{t.codigo} nao e monotonico: {serie}"
+
+
+def test_t1_sinaliza_carteira_viva_sem_provisao():
+    """Provisao exatamente zero e condicao categorica, nao cauda de distribuicao.
+
+    Na escala simetrica em MAD a cobertura nula fica a cerca de 2 desvios da
+    mediana e escaparia de qualquer limiar usual.
+    """
+    ind = _painel_para_testes()
+    ind.loc[ind.index[:4], "cobertura_provisao"] = 0.0
+    ind.loc[ind.index[:4], "peso_carteira"] = 0.5
+    sinal = testes_analiticos.aplicar(ind)
+    assert sinal.loc[sinal.index[:4], "T1_sinaliza"].all()
+
+
+def test_escopo_de_materialidade_exclui_credito_imaterial():
+    ind = _painel_para_testes()
+    ind["cobertura_provisao"] = 0.0
+    ind["peso_carteira"] = 0.01
+    sinal = testes_analiticos.aplicar(ind)
+    assert not sinal["T1_sinaliza"].any(), "T1 nao pode se aplicar a carteira imaterial"
+
+
+def test_persistencia_separa_estrutural_de_episodico():
+    ind = _painel_para_testes()
+    sinal = testes_analiticos.aplicar(ind)
+    marcas = [c for c in sinal.columns if c.endswith("_sinaliza")]
+    sempre = sinal["cod_inst"].iloc[0]
+    sinal.loc[sinal["cod_inst"] == sempre, marcas] = True
+    pers = testes_analiticos.classificar_persistencia(sinal)
+    assert (pers.loc[pers["cod_inst"] == sempre, "classe"] == "estrutural").all()
+    foco = testes_analiticos.foco_de_exame(sinal)
+    assert sempre not in set(foco["cod_inst"]), "sinalizacao estrutural deve sair do foco"
+
+
+def test_saida_dos_testes_nao_afirma_irregularidade():
+    ind = _painel_para_testes()
+    sinal = testes_analiticos.aplicar(ind)
+    alvo = sinal[sinal["n_testes_sinalizados"] > 0]
+    if alvo.empty:
+        return
+    r = alvo.iloc[0]
+    texto = testes_analiticos.detalhar(sinal, r["cod_inst"], r["anomes"]).lower()
+    assert "nao indicio de irregularidade" in texto.replace("ã", "a").replace("í", "i")
 
 
 if __name__ == "__main__":
