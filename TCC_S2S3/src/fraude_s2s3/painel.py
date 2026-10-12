@@ -234,7 +234,28 @@ def construir(indicadores: pd.DataFrame, cfg=None) -> PainelPronto:
     cfg_aval = (cfg or CONFIG).avaliacao
 
     df = indicadores.copy()
-    brutos = [c for c in df.columns if c not in CHAVES]
+
+    # Atributo e coluna numerica que nao seja chave. A selecao e por tipo, e nao
+    # por lista de nomes, porque o painel gravado em dados/tratados carrega
+    # tambem identificacao textual — Instituicao, TCB, SR — e um painel lido de
+    # CSV perde o .attrs que diria quais colunas sao indicadores. Sem isso, um
+    # rotulo de instituicao entraria no espaco de atributos da rede.
+    candidatos = [c for c in df.columns if c not in CHAVES]
+    brutos = [c for c in candidatos
+              if pd.api.types.is_numeric_dtype(df[c]) and not pd.api.types.is_bool_dtype(df[c])]
+    descartados = [c for c in candidatos if c not in brutos]
+    if descartados:
+        diagnostico.registrar(
+            area=AREA,
+            item=f"Colunas nao numericas fora do espaco de atributos: {descartados}",
+            impacto=("Sao identificacao, nao medida. Permanecem no painel para leitura "
+                     "e rastreabilidade, mas nao entram na matriz da rede."),
+            acao=("Nenhuma, se forem mesmo identificacao. Se algum indicador numerico "
+                  "caiu aqui, ele foi lido como texto — conferir o CSV de origem. "
+                  "Area: painel.construir()."),
+            severidade=diagnostico.Severidade.OBSERVA,
+        )
+
     df = filtrar_historico(df, cfg_painel)
     brutos = descartar_esparsos(df, brutos, cfg_painel)
     if not brutos:

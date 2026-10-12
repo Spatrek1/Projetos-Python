@@ -39,7 +39,9 @@ _DEPENDENCIAS = {
     "baselines": ("pandas", "numpy", "scikit-learn"),
     "benford": ("pandas", "numpy"),
     "consolidacao": ("pandas", "numpy"),
-    "ifdata": ("pandas", "requests"),
+    # requests so e exigido pelo cliente HTTP (ClienteIFData), nao pela
+    # leitura de exportacoes manuais.
+    "ifdata": ("pandas",),
     "indicadores": ("pandas", "numpy"),
     "interpretacao": ("pandas", "numpy"),
     "mapeamento": ("pandas",),

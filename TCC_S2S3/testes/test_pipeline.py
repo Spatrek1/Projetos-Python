@@ -246,6 +246,23 @@ def test_saida_dos_testes_nao_afirma_irregularidade():
     assert "nao indicio de irregularidade" in texto.replace("ã", "a").replace("í", "i")
 
 
+def test_painel_ignora_colunas_de_identificacao():
+    """Rotulo de instituicao nao pode entrar no espaco de atributos da rede.
+
+    O painel gravado em dados/tratados carrega Instituicao, TCB e SR, e um
+    painel lido de CSV perde o .attrs que diria quais colunas sao indicadores.
+    Sem selecao por tipo, o texto entraria na matriz e a construcao quebraria.
+    """
+    ind = indicadores.construir(painel_artificial(n_instituicoes=12))
+    ind["Instituição"] = "BANCO " + ind["cod_inst"].astype(str)
+    ind["TCB"] = "b1"
+    ind["SR"] = "S3"
+    pronto = painel.construir(ind)
+    for texto in ("Instituição", "TCB", "SR"):
+        assert texto not in pronto.atributos, f"{texto} entrou no espaco de atributos"
+    assert pronto.matriz(pronto.treino).dtype.kind == "f"
+
+
 if __name__ == "__main__":
     falhas = 0
     for nome, funcao in sorted(globals().items()):

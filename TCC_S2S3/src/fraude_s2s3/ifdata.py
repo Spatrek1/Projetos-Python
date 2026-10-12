@@ -39,7 +39,6 @@ from pathlib import Path
 from typing import Any, Iterable
 
 import pandas as pd
-import requests
 
 from . import diagnostico
 from .config import CONFIG, DIR_BRUTOS, ConfigColeta, periodos
@@ -75,6 +74,21 @@ class ClienteIFData:
         self.cfg = cfg or CONFIG.coleta
         self.dir_cache = Path(dir_cache or DIR_BRUTOS)
         self.dir_cache.mkdir(parents=True, exist_ok=True)
+        # 'requests' so e exigido por quem usa o cliente HTTP. A rota desta
+        # pesquisa — exportacao manual lida por carregar_csv_local() e por
+        # consolidacao.py — nao toca a rede, e nao deve depender de uma
+        # biblioteca de rede para funcionar.
+        try:
+            import requests
+        except ModuleNotFoundError as e:
+            raise ErroColeta(
+                "O cliente do servico OData precisa de 'requests', que nao esta "
+                "instalado.\n\n"
+                "  Se voce usa a rota de exportacao manual (o caso desta pesquisa), "
+                "nao precisa deste cliente:\n"
+                "  use consolidacao.consolidar() ou execute processar_base.py.\n\n"
+                "  Para usar a API:  pip install requests"
+            ) from e
         self.sessao = requests.Session()
         self.sessao.headers.update({"Accept": "application/json"})
         self._recursos: dict[str, Recurso] | None = None
