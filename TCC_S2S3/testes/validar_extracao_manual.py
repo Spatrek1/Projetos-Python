@@ -134,6 +134,67 @@ def analisar(diretorio: Path) -> int:
     else:
         print("\n  Cobertura completa.")
 
+    # -- cobertura por relatorio ------------------------------------------
+    # Ter os 24 trimestres nao basta: cada um precisa dos seis relatorios.
+    # Sem esta conferencia, faltar o 'passivo' em toda a base passaria por
+    # "cobertura completa" e so apareceria como indicador ausente no fim.
+    try:
+        import sys as _s
+        _s.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+        from fraude_s2s3.consolidacao import identificar_relatorio
+    except Exception:
+        identificar_relatorio = None
+
+    if identificar_relatorio is not None:
+        RELATORIOS = ("resumo", "ativo", "passivo", "dre", "info_cap", "segmentacao")
+        grade: dict[int, set[str]] = defaultdict(set)
+        nao_identificados: list[Path] = []
+        for a in arquivos:
+            per = periodo_do_nome(a.name)
+            rel = identificar_relatorio(a.stem)
+            if rel:
+                if per:
+                    grade[per].add(rel)
+            else:
+                nao_identificados.append(a)
+
+        print(f"\n  Relatorios por trimestre (esperados {len(RELATORIOS)}):\n")
+        cab = "    periodo  " + "  ".join(r[:8].rjust(8) for r in RELATORIOS)
+        print(cab)
+        print("    " + "-" * (len(cab) - 4))
+        incompletos = 0
+        for per in esperados:
+            tem = grade.get(per, set())
+            if not tem:
+                continue
+            marcas = "  ".join(("   ok   " if r in tem else "  FALTA ") for r in RELATORIOS)
+            if len(tem) < len(RELATORIOS):
+                incompletos += 1
+            print(f"    {per}  {marcas}")
+
+        total = sum(len(v) for v in grade.values())
+        print(f"\n  Arquivos reconhecidos: {total} de "
+              f"{len(esperados) * len(RELATORIOS)} esperados")
+        if incompletos:
+            print(f"  Trimestres incompletos: {incompletos}")
+            print("\n  Cada relatorio ausente retira os conceitos que so ele traz:")
+            print("    ativo       -> carteira de credito, provisao, TVM  (T1, T2, T3)")
+            print("    passivo     -> depositos, captacao                 (concentracao)")
+            print("    dre         -> resultado, margem, tributos         (T5, T6)")
+            print("    info_cap    -> indice de Basileia, capital         (T4)")
+            print("    segmentacao -> enquadramento S1-S5                 (recorte S2/S3)")
+            print("    resumo      -> identificacao e conferencia")
+        else:
+            print("  Todos os trimestres presentes tem os seis relatorios.")
+
+        if nao_identificados:
+            print(f"\n  NOME NAO RECONHECIDO ({len(nao_identificados)}):")
+            for a in nao_identificados[:8]:
+                print(f"    {a.name}")
+            print("\n  O relatorio e deduzido do nome. Mantenha a palavra-chave do")
+            print("  IF.data no arquivo: Ativo, Passivo, Resumo, DRE/Resultado,")
+            print("  Info de Cap, Segmentacao.")
+
     if extras:
         print(f"\n  Fora do recorte (serao ignorados): {extras}")
     if sem_periodo:
