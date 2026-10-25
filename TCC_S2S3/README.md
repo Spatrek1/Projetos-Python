@@ -17,13 +17,20 @@ Fluminense.
 
 ```bash
 pip install -r requirements.txt
-python testes/test_pipeline.py          # verificação: 16 testes
+python testes/test_pipeline.py              # verificação: 21 testes
+python testes/conferir_painel_tratado.py    # o que roda com os dados que você tem
+```
+
+Com a base bruta em `dados/ifdata_bruto/`, um comando produz tudo:
+
+```bash
+python processar_base.py
 jupyter lab notebooks/00_pipeline_s2_s3.ipynb
 ```
 
-No notebook, execute a **seção 2 primeiro**: ela descobre o esquema real do serviço OData do
-IF.data e informa quais relatórios e tipos de instituição existem. Só então preencha `RELATORIOS`
-e `TIPOS_INSTITUICAO` na seção 2.1.
+A **seção 2 do notebook decide a rota sozinha**, nesta ordem: painel já tratado, base bruta local,
+API, fumaça. A exportação manual é a rota desta pesquisa; o serviço OData é a última tentativa, não
+a primeira, e sua indisponibilidade não interrompe nada.
 
 Para verificar a execução sem rede, altere `USAR_DADOS_REAIS = False`. Isso usa um painel
 **artificial** — nenhum número desse modo pode aparecer no TCC.
