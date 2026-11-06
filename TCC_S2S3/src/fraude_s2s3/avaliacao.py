@@ -98,7 +98,8 @@ def validar_por_eventos(escores: pd.DataFrame, eventos: pd.DataFrame,
     no_painel = 0
     for _, ev in eventos.iterrows():
         cod, quando = ev["cod_inst"], int(ev["anomes_evento"])
-        janela = _trimestres_anteriores(quando, cfg_aval.janela_antecedencia)
+        janela = _trimestres_anteriores(quando, cfg_aval.janela_antecedencia,
+                                        cfg_aval.defasagem_divulgacao)
         m = (df["cod_inst"].astype(str) == str(cod)) & (df["anomes"].isin(janela))
         if m.any():
             no_painel += 1
@@ -118,6 +119,24 @@ def validar_por_eventos(escores: pd.DataFrame, eventos: pd.DataFrame,
             ),
             severidade=diagnostico.Severidade.BLOQUEIA,
         )
+
+    diagnostico.registrar(
+        area=AREA,
+        item=(f"Validacao por eventos com janela de {cfg_aval.janela_antecedencia} "
+              f"trimestres e defasagem de divulgacao de "
+              f"{cfg_aval.defasagem_divulgacao} trimestre(s)."),
+        impacto=(
+            "A defasagem descarta os trimestres mais proximos do evento, que "
+            "podem nao ter sido publicos quando ele ocorreu. Com defasagem 0, "
+            "parte dos acertos pode refletir dado ainda nao divulgado, e a "
+            "afirmacao de antecipacao fica fragil."
+        ),
+        acao=(
+            "Reportar no TCC a janela e a defasagem adotadas, e a sensibilidade "
+            "do resultado a elas. Area: avaliacao.validar_por_eventos()."
+        ),
+        severidade=diagnostico.Severidade.OBSERVA,
+    )
 
     df = df.sort_values(coluna_escore, ascending=False).reset_index(drop=True)
     total_pos = int(df["positivo"].sum())
@@ -145,7 +164,10 @@ def validar_por_eventos(escores: pd.DataFrame, eventos: pd.DataFrame,
     ant = []
     for _, ev in eventos.iterrows():
         cod, quando = str(ev["cod_inst"]), int(ev["anomes_evento"])
-        hist = escores[(escores["cod_inst"].astype(str) == cod) & (escores["anomes"] < quando)]
+        corte = quando
+        for _ in range(cfg_aval.defasagem_divulgacao):
+            corte = _trimestre_anterior(corte)
+        hist = escores[(escores["cod_inst"].astype(str) == cod) & (escores["anomes"] < corte)]
         acima = hist[hist[coluna_escore] >= limiar]
         ant.append(
             {
@@ -181,8 +203,177 @@ def validar_por_eventos(escores: pd.DataFrame, eventos: pd.DataFrame,
     return ResultadoEventos(tabela_k, antecedencia, len(eventos), no_painel)
 
 
-def _trimestres_anteriores(anomes: int, n: int) -> list[int]:
-    saida, atual = [], anomes
+def teste_permutacao(escores: pd.DataFrame, eventos: pd.DataFrame,
+                     coluna_escore: str = "escore", cfg=None) -> pd.DataFrame:
+    """Afere se o desempenho na validação por eventos excede o acaso.
+
+    Por que é necessário
+    --------------------
+    Com poucos eventos — e em S2/S3 entre 2019 e 2024 eles são poucos —
+    ``Precision@k`` é estimativa pontual de variância enorme. Precisão de 0,20
+    sobre 5 eventos pode ser desempenho real ou sorte, e a tabela sozinha não
+    distingue uma coisa da outra.
+
+    O teste responde a pergunta certa: **se os eventos tivessem caído em
+    instituições sorteadas, com que frequência o acaso igualaria o que foi
+    observado?** Reatribui os eventos a instituições ao acaso, preservando o
+    número de eventos e o calendário, e recalcula a métrica em cada
+    reamostragem.
+
+    O que o ``p`` significa
+    -----------------------
+    A fração de reamostragens em que o acaso alcançou ou superou o observado.
+    Valor alto indica que os dados não distinguem o modelo do acaso — o que,
+    com 3 ou 4 eventos, é o desfecho esperado e **deve ser relatado como tal**,
+    não omitido.
+
+    Devolve uma linha por ``k``, com a métrica observada, a mediana sob o
+    acaso e o ``p`` empírico.
+    """
+    cfg_aval = (cfg or CONFIG).avaliacao
+    if eventos.empty or escores.empty:
+        return pd.DataFrame()
+
+    instituicoes = escores["cod_inst"].astype(str).unique()
+    if len(instituicoes) < 2:
+        return pd.DataFrame()
+
+    observado = validar_por_eventos(escores, eventos, coluna_escore, cfg).tabela_k
+    if observado.empty:
+        return pd.DataFrame()
+
+    rng = np.random.default_rng(12345)
+    nulos: dict[int, list[float]] = {int(k): [] for k in observado["k"]}
+    silencio = _SemDiagnostico()
+    for _ in range(cfg_aval.permutacoes):
+        sorteadas = rng.choice(instituicoes, size=len(eventos), replace=True)
+        falsos = eventos.copy()
+        falsos["cod_inst"] = sorteadas
+        with silencio:
+            t = validar_por_eventos(escores, falsos, coluna_escore, cfg).tabela_k
+        if t.empty:
+            continue
+        for r in t.itertuples():
+            if int(r.k) in nulos:
+                nulos[int(r.k)].append(float(r.precisao_em_k))
+
+    linhas = []
+    for r in observado.itertuples():
+        amostra = np.array(nulos.get(int(r.k), []), dtype=float)
+        if amostra.size == 0:
+            continue
+        # +1 no numerador e no denominador: estimador sem p igual a zero, que
+        # seria afirmar impossibilidade a partir de reamostragem finita.
+        p = (int((amostra >= r.precisao_em_k).sum()) + 1) / (amostra.size + 1)
+        linhas.append({
+            "k": int(r.k),
+            "precisao_observada": round(float(r.precisao_em_k), 4),
+            "precisao_mediana_sob_acaso": round(float(np.median(amostra)), 4),
+            "precisao_p95_sob_acaso": round(float(np.quantile(amostra, 0.95)), 4),
+            "p_empirico": round(p, 4),
+            "reamostragens": int(amostra.size),
+        })
+    saida = pd.DataFrame(linhas)
+
+    if not saida.empty:
+        melhor = float(saida["p_empirico"].min())
+        diagnostico.registrar(
+            area=AREA,
+            item=(f"Teste de permutacao com {cfg_aval.permutacoes} reamostragens: "
+                  f"menor p empirico = {melhor:.3f}."),
+            impacto=(
+                "p alto nao significa que o modelo nao funciona: significa que o "
+                "numero de eventos nao permite distingui-lo do acaso. Com poucos "
+                "eventos esse e o desfecho esperado."
+                if melhor > 0.10 else
+                "O desempenho observado excede o que o acaso produz na maioria das "
+                "reamostragens. Continua valendo o numero de eventos como limite."
+            ),
+            acao=(
+                "Reportar o p ao lado de Precision@k, sempre com o numero de "
+                "eventos. Nunca apresentar a precisao sozinha. "
+                "Area: avaliacao.teste_permutacao()."
+            ),
+            severidade=diagnostico.Severidade.COMPROMETE,
+        )
+    return saida
+
+
+def validar_por_tipo(escores: pd.DataFrame, eventos: pd.DataFrame,
+                     coluna_escore: str = "escore", cfg=None) -> pd.DataFrame:
+    """Repete a validação separadamente para cada ``tipo_evento``.
+
+    Liquidação extrajudicial e sanção por falha cadastral não são o mesmo
+    rótulo. Somar as duas num único "positivo" mistura o que o escore deveria
+    antecipar com o que ele não tem por que antecipar, e o resultado agregado
+    não diz a qual dos dois se refere.
+
+    Devolve uma linha por (tipo, k). Tipos com um único evento aparecem na
+    tabela, para que a contagem fique visível, mas a métrica deles é descritiva.
+    """
+    if eventos.empty or "tipo_evento" not in eventos.columns:
+        return pd.DataFrame()
+
+    silencio = _SemDiagnostico()
+    linhas = []
+    for tipo, bloco in eventos.groupby("tipo_evento"):
+        with silencio:
+            r = validar_por_eventos(escores, bloco, coluna_escore, cfg)
+        for linha in r.tabela_k.to_dict("records"):
+            linhas.append({
+                "tipo_evento": tipo,
+                "n_eventos": len(bloco),
+                "n_eventos_no_painel": r.n_eventos_no_painel,
+                **linha,
+            })
+    saida = pd.DataFrame(linhas)
+
+    if not saida.empty:
+        poucos = sorted({t for t, b in eventos.groupby("tipo_evento") if len(b) < 3})
+        if poucos:
+            diagnostico.registrar(
+                area=AREA,
+                item=f"Tipos de evento com menos de 3 ocorrencias: {poucos}",
+                impacto=("Para esses tipos a metrica e descritiva, nao estatistica. "
+                         "Precision@k sobre um ou dois eventos nao sustenta comparacao."),
+                acao=("Reportar esses tipos nominalmente, como estudo de caso, e nao "
+                      "em tabela de metricas. Area: avaliacao.validar_por_tipo()."),
+                severidade=diagnostico.Severidade.COMPROMETE,
+            )
+    return saida
+
+
+class _SemDiagnostico:
+    """Suspende o registro de pendências durante reamostragem.
+
+    Sem isso, as milhares de execuções internas do teste de permutação
+    inundariam o relatório de correção com pendências de execuções que não
+    correspondem a nenhum dado real.
+    """
+
+    def __enter__(self):
+        self._anterior = diagnostico.registrar
+        diagnostico.registrar = lambda **kwargs: None
+        return self
+
+    def __exit__(self, *exc):
+        diagnostico.registrar = self._anterior
+        return False
+
+
+def _trimestres_anteriores(anomes: int, n: int, defasagem: int = 0) -> list[int]:
+    """Os ``n`` trimestres anteriores a ``anomes``, pulando os ``defasagem``
+    mais próximos.
+
+    A defasagem existe porque o IF.data é divulgado meses após a data-base: o
+    trimestre imediatamente anterior a um evento pode não ter sido público
+    quando ele ocorreu, e contá-lo como antecipação confunde prever com
+    constatar. Ver ``ConfigAvaliacao.defasagem_divulgacao``.
+    """
+    atual = anomes
+    for _ in range(defasagem):
+        atual = _trimestre_anterior(atual)
+    saida = []
     for _ in range(n):
         atual = _trimestre_anterior(atual)
         saida.append(atual)

@@ -263,6 +263,90 @@ def test_painel_ignora_colunas_de_identificacao():
     assert pronto.matriz(pronto.treino).dtype.kind == "f"
 
 
+def _cenario_eventos():
+    """Painel sintetico com sinal real em duas instituicoes de tres eventos."""
+    from dataclasses import replace
+    from fraude_s2s3.config import CONFIG
+    tris = [a * 100 + m for a in range(2019, 2025) for m in (3, 6, 9, 12)][:20]
+    rng = np.random.default_rng(0)
+    insts = [f"I{i:03d}" for i in range(40)]
+    esc = pd.DataFrame([{"cod_inst": i, "anomes": q, "escore": rng.normal()}
+                        for i in insts for q in tris])
+    eventos = pd.DataFrame([
+        {"cod_inst": "I000", "anomes_evento": 202206,
+         "tipo_evento": "LIQUIDACAO_EXTRAJUDICIAL", "fonte": "x"},
+        {"cod_inst": "I001", "anomes_evento": 202212,
+         "tipo_evento": "LIQUIDACAO_EXTRAJUDICIAL", "fonte": "x"},
+        {"cod_inst": "I002", "anomes_evento": 202306,
+         "tipo_evento": "PAS_BCB", "fonte": "x"},
+    ])
+    for c, ev in (("I000", 202206), ("I001", 202212)):
+        esc.loc[(esc.cod_inst == c) & (esc.anomes < ev), "escore"] += 4
+    return esc, eventos, CONFIG, replace
+
+
+def test_defasagem_de_divulgacao_altera_a_janela():
+    """O trimestre mais proximo do evento pode nao ter sido publico.
+
+    Conta-lo como antecipacao confunde prever com constatar, entao a janela
+    tem de responder ao parametro.
+    """
+    from fraude_s2s3.avaliacao import _trimestres_anteriores
+
+    # A janela em si: e ela que a defasagem desloca.
+    assert _trimestres_anteriores(202206, 4, 0) == [202203, 202112, 202109, 202106]
+    assert _trimestres_anteriores(202206, 4, 1) == [202112, 202109, 202106, 202103]
+    assert _trimestres_anteriores(202206, 4, 2) == [202109, 202106, 202103, 202012]
+
+    # E o efeito chega ao conjunto de observacoes positivas.
+    esc, eventos, CONFIG, replace = _cenario_eventos()
+    positivos = {}
+    for d in (0, 2):
+        cfg = replace(CONFIG, avaliacao=replace(CONFIG.avaliacao,
+                                                defasagem_divulgacao=d))
+        r = avaliacao.validar_por_eventos(esc, eventos, cfg=cfg)
+        assert r.n_eventos_no_painel == 3
+        positivos[d] = r.antecedencia["trimestres_de_antecedencia"].tolist()
+    assert positivos[0] != positivos[2], f"defasagem sem efeito: {positivos}"
+
+
+def test_permutacao_distingue_sinal_de_acaso():
+    esc, eventos, CONFIG, replace = _cenario_eventos()
+    cfg = replace(CONFIG, avaliacao=replace(CONFIG.avaliacao, permutacoes=200))
+
+    com_sinal = avaliacao.teste_permutacao(esc, eventos, cfg=cfg)
+    assert not com_sinal.empty
+    assert com_sinal["p_empirico"].min() < 0.10, com_sinal.to_string()
+
+    rng = np.random.default_rng(7)
+    ruido = esc.copy()
+    ruido["escore"] = rng.normal(size=len(ruido))
+    sem_sinal = avaliacao.teste_permutacao(ruido, eventos, cfg=cfg)
+    assert sem_sinal["p_empirico"].min() > com_sinal["p_empirico"].min()
+    # p empirico nunca e zero: reamostragem finita nao prova impossibilidade
+    assert (com_sinal["p_empirico"] > 0).all()
+
+
+def test_validacao_por_tipo_nao_mistura_rotulos():
+    esc, eventos, _, _ = _cenario_eventos()
+    por_tipo = avaliacao.validar_por_tipo(esc, eventos)
+    assert set(por_tipo["tipo_evento"]) == {"LIQUIDACAO_EXTRAJUDICIAL", "PAS_BCB"}
+    liq = por_tipo[por_tipo.tipo_evento == "LIQUIDACAO_EXTRAJUDICIAL"]
+    pas = por_tipo[por_tipo.tipo_evento == "PAS_BCB"]
+    assert liq["n_eventos"].iat[0] == 2 and pas["n_eventos"].iat[0] == 1
+    # o sinal foi plantado so nas liquidacoes
+    assert liq["precisao_em_k"].max() > pas["precisao_em_k"].max()
+
+
+def test_permutacao_nao_polui_o_relatorio_de_pendencias():
+    """Milhares de execucoes internas nao podem virar milhares de pendencias."""
+    esc, eventos, CONFIG, replace = _cenario_eventos()
+    cfg = replace(CONFIG, avaliacao=replace(CONFIG.avaliacao, permutacoes=100))
+    diagnostico.limpar()
+    avaliacao.teste_permutacao(esc, eventos, cfg=cfg)
+    assert len(diagnostico.pendencias()) < 10
+
+
 if __name__ == "__main__":
     falhas = 0
     for nome, funcao in sorted(globals().items()):

@@ -172,6 +172,22 @@ class ConfigAvaliacao:
     #: considerado "acerto antecipado". 4 trimestres = 1 ano de antecedência.
     janela_antecedencia: int = 4
 
+    #: Trimestres descartados imediatamente antes do evento, por não terem sido
+    #: públicos quando ele ocorreu.
+    #:
+    #: O IF.data é divulgado meses após a data-base. Para um evento em junho, o
+    #: balanço de março pode ter chegado ao público praticamente junto com o
+    #: evento — contá-lo como antecipação confunde prever com constatar.
+    #:
+    #: 1 é a escolha conservadora e a que se defende melhor. 0 reproduz o
+    #: comportamento anterior e exige reportar, em separado, quantos acertos
+    #: dependem do trimestre mais próximo.
+    defasagem_divulgacao: int = 1
+
+    #: Reamostragens do teste de permutação que afere se o desempenho na
+    #: validação por eventos excede o acaso.
+    permutacoes: int = 2000
+
     #: Corte temporal do treino. Nada posterior a esta data entra no ajuste.
     #: Painel é dado longitudinal: divisão aleatória vaza informação do futuro.
     corte_treino: int = 202212
