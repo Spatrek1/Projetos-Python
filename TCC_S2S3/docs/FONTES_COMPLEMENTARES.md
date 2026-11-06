@@ -84,6 +84,126 @@ Se quiser incluí-las, use um `tipo_evento` distinto (ex.: `APURACAO_EM_CURSO`)
 e reporte os resultados em separado, deixando explícito o estatuto diferente
 dessas observações.
 
+### 1.5 Como navegar cada fonte
+
+> As URLs dos portais `gov.br` mudam com frequência, e **não foi possível
+> conferi-las ao escrever esta seção** — a política de rede do ambiente em que o
+> código foi desenvolvido bloqueia `bcb.gov.br`, `cvm.gov.br` e `in.gov.br`. Por
+> isso o que segue descreve **caminhos de navegação e termos de busca**, não
+> endereços. Confira cada link antes de citar, e registre a data de acesso.
+
+**Banco Central — regimes especiais.** No portal do BCB, procure a área de
+*Estabilidade financeira* e, dentro dela, *Regimes especiais* ou *Liquidações*.
+O BCB mantém relação das instituições em regime especial, com a data do ato e o
+tipo de regime, incluindo encerrados. É o ponto de partida: dá a lista; o DOU dá
+o documento.
+
+**Diário Oficial da União — a fonte primária.** O portal da Imprensa Nacional
+tem busca por período e por termo. Procure pelo **nome da instituição** e, em
+paralelo, por expressões do ato: *"liquidação extrajudicial"*, *"regime de
+administração especial temporária"*, *"intervenção"*, *"cancelamento da
+autorização para funcionamento"*. O ato traz número, data, autoridade e
+fundamento legal — é isso que se cita, não a notícia sobre ele.
+
+**Sancionadores do BCB.** Procure por *processo administrativo sancionador* no
+portal do BCB. A Lei 13.506/2017 rege o rito atual e mudou a forma de
+publicação, então o formato difere entre o começo e o fim do seu recorte — vale
+registrar isso no TCC.
+
+**CVM.** Para instituições de capital aberto: o portal de dados abertos da CVM
+publica fatos relevantes e processos sancionadores em arquivos por ano,
+baixáveis e filtráveis — mais confiável que a busca da página.
+
+### 1.6 CRSFN — a fonte que costuma passar despercebida
+
+O **Conselho de Recursos do Sistema Financeiro Nacional**, o "Conselhinho",
+julga os recursos contra decisões sancionadoras do BCB e da CVM. Está vinculado
+ao Ministério da Fazenda, e seus **acórdãos são públicos**.
+
+Por que importa mais do que parece: o acórdão costuma **descrever a infração**,
+e isso permite separar o que interessa ao estudo — divergência em informação
+contábil, classificação de risco de crédito, provisionamento — do que não
+interessa, como falha cadastral. É a melhor fonte para montar um rótulo
+*específico de manipulação contábil*, em vez de um rótulo genérico de "sanção".
+
+A contrapartida: só chega ao CRSFN o que foi recorrido, e o julgamento é anos
+posterior ao fato. Serve para **qualificar** eventos, não para datá-los.
+
+### 1.7 FGC — sinal indireto
+
+O Fundo Garantidor de Créditos divulga os pagamentos de garantia, que
+acompanham liquidações. Não é fonte primária do evento, mas serve de
+**conferência cruzada**: pagamento de garantia sem ato correspondente na sua
+planilha significa que você perdeu um caso.
+
+### 1.8 O problema da defasagem de divulgação
+
+**Este é o ponto que mais ameaça a conclusão, e o mais fácil de não enxergar.**
+
+O pipeline considera sinalizado o escore nos `janela_antecedencia = 4`
+trimestres **anteriores** ao evento. Mas o IF.data não é publicado no
+fechamento do trimestre: há defasagem de alguns meses entre a data-base e a
+divulgação.
+
+Consequência: para um evento em junho, o trimestre imediatamente anterior
+(março) pode ter sido divulgado praticamente junto com o evento. Dizer que o
+modelo "antecipou" usando aquele trimestre é frágil — naquele momento o dado
+ainda não era público.
+
+Duas saídas, e **a escolha precisa estar no texto**:
+
+1. **Descartar o trimestre mais próximo** e contar a antecedência a partir de
+   t−2. Conservador, e o que se defende melhor na banca.
+2. **Manter os quatro trimestres**, mas reportar separadamente quantos acertos
+   dependem do trimestre mais próximo.
+
+Em qualquer caso, levante a data de divulgação efetiva de cada data-base e
+registre-a. Não é detalhe: é a diferença entre "o modelo antecipou" e "o modelo
+viu o que já estava acontecendo".
+
+### 1.9 Casar o ato com o `cod_inst`
+
+Obstáculo prático que aparece na hora de preencher a planilha: o ato do BCB
+nomeia a **instituição** e traz o **CNPJ**; o seu painel é de **conglomerado
+prudencial**, cujo código não é o CNPJ.
+
+Uma instituição liquidada pode ser parte de um conglomerado que continua
+existindo, ou ser o próprio conglomerado. São situações diferentes e produzem
+rótulos diferentes. Use o relatório de **resumo** do IF.data, que traz a
+identificação, para fazer a correspondência, e **registre no TCC o critério
+adotado** quando o ato atinge parte de um conglomerado.
+
+### 1.10 Quantos eventos esperar — e o que fazer se forem poucos
+
+Sua amostra tem 72 instituições em 24 trimestres. Regimes especiais em S2/S3
+nesse recorte são **raros**: é inteiramente possível terminar com meia dúzia de
+eventos, ou com nenhum.
+
+Isso não invalida o trabalho, mas **muda o que ele pode afirmar**, e é melhor
+decidir agora do que ao escrever a conclusão:
+
+| Eventos encontrados | O que o TCC pode afirmar |
+|---|---|
+| 0 | Nada sobre antecipação. O trabalho se sustenta na atipicidade e nos seis testes, e a ausência de eventos no recorte é em si um resultado a relatar. |
+| 1 a 5 | Análise **de casos**, nominal e descritiva. Nenhuma métrica agregada — AUC sobre 3 eventos não significa nada. |
+| 6 ou mais | Métricas agregadas, sempre com o número de eventos ao lado e intervalo de confiança. |
+
+Decida o critério **antes** de olhar os resultados e registre a decisão. Escolher
+a métrica depois de ver qual favorece é o erro que a banca identifica mais
+rápido.
+
+### 1.11 Um sinal que vem do próprio painel
+
+Independente de qualquer fonte externa: **instituições que desaparecem do painel**
+entre um trimestre e outro. Isso é observável nos seus próprios dados e não
+custa nada levantar.
+
+A ressalva é séria: desaparecer pode significar liquidação, mas também fusão,
+incorporação, mudança de segmento ou reorganização societária — e as duas
+primeiras são comuns no período. **Não use como rótulo sozinho.** Use como
+*lista de candidatos* a investigar nas fontes acima: é um jeito eficiente de
+descobrir quais instituições merecem busca no DOU, em vez de procurar as 72.
+
 ---
 
 ## 2. CVM — validação contábil cruzada
