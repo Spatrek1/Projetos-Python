@@ -60,3 +60,72 @@ def exportar_csv(banco: Banco, caminho: str, inicio: date | None = None,
             w.writerow([t["data"], t["conta_nome"], t["descricao"], t["tipo"], valor,
                         t["categoria"], t["id"]])
     return len(linhas)
+
+
+@dataclass
+class GrupoInvestimento:
+    tipo: str
+    saldo: int = 0
+    aplicado: int = 0          # soma só dos que têm valor aplicado conhecido
+    saldo_com_aplicado: int = 0
+    itens: list = field(default_factory=list)
+
+    @property
+    def rendimento(self) -> int | None:
+        return self.saldo_com_aplicado - self.aplicado if self.aplicado else None
+
+
+@dataclass
+class Carteira:
+    grupos: dict[str, GrupoInvestimento] = field(default_factory=dict)
+
+    @property
+    def total(self) -> int:
+        return sum(g.saldo for g in self.grupos.values())
+
+    @property
+    def aplicado(self) -> int:
+        return sum(g.aplicado for g in self.grupos.values())
+
+    @property
+    def rendimento(self) -> int | None:
+        base = sum(g.saldo_com_aplicado for g in self.grupos.values())
+        return base - self.aplicado if self.aplicado else None
+
+
+def carteira(banco: Banco) -> Carteira:
+    from financas.models import nome_tipo_investimento
+
+    c = Carteira()
+    for inv in banco.listar_investimentos():
+        nome = nome_tipo_investimento(inv["tipo"])
+        g = c.grupos.setdefault(nome, GrupoInvestimento(tipo=nome))
+        g.saldo += inv["saldo_centavos"]
+        if inv["valor_aplicado_centavos"] is not None:
+            g.aplicado += inv["valor_aplicado_centavos"]
+            g.saldo_com_aplicado += inv["saldo_centavos"]
+        g.itens.append(inv)
+    c.grupos = dict(sorted(c.grupos.items(), key=lambda kv: -kv[1].saldo))
+    return c
+
+
+@dataclass
+class Patrimonio:
+    contas: int = 0       # saldo em contas correntes/poupança
+    cartoes: int = 0      # fatura atual dos cartões (dívida, positivo)
+    investimentos: int = 0
+
+    @property
+    def liquido(self) -> int:
+        return self.contas + self.investimentos - self.cartoes
+
+
+def patrimonio(banco: Banco) -> Patrimonio:
+    p = Patrimonio()
+    for conta in banco.listar_contas():
+        if conta["tipo"] == "CREDIT":
+            p.cartoes += abs(conta["saldo_centavos"])
+        else:
+            p.contas += conta["saldo_centavos"]
+    p.investimentos = carteira(banco).total
+    return p

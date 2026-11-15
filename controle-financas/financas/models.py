@@ -51,3 +51,43 @@ def formatar_brl(centavos: int) -> str:
     reais, cents = divmod(abs(centavos), 100)
     inteiro = f"{reais:,}".replace(",", ".")
     return f"{sinal}R$ {inteiro},{cents:02d}"
+
+
+@dataclass
+class Investimento:
+    id: str
+    item_id: str              # "manual" para investimentos cadastrados à mão
+    nome: str
+    tipo: str                 # FIXED_INCOME, MUTUAL_FUND, EQUITY, ETF, SECURITY, COE, OTHER
+    subtipo: str = ""         # CDB, LCI, TREASURY, STOCK, ...
+    codigo: str = ""          # ticker / código do ativo
+    saldo_centavos: int = 0   # valor líquido atual
+    valor_bruto_centavos: int | None = None
+    valor_aplicado_centavos: int | None = None
+    quantidade: float | None = None
+    vencimento: date | None = None
+    taxa: str = ""            # ex.: "110% CDI", "IPCA + 6%"
+    instituicao: str = ""
+    moeda: str = "BRL"
+
+    @property
+    def rendimento_centavos(self) -> int | None:
+        if self.valor_aplicado_centavos is None:
+            return None
+        return self.saldo_centavos - self.valor_aplicado_centavos
+
+
+TIPOS_INVESTIMENTO = {
+    "FIXED_INCOME": "Renda fixa",
+    "MUTUAL_FUND": "Fundos",
+    "EQUITY": "Ações",
+    "ETF": "ETFs",
+    "SECURITY": "Previdência",
+    "COE": "COE",
+    "CRYPTO": "Criptomoedas",  # só para cadastro manual
+    "OTHER": "Outros",
+}
+
+
+def nome_tipo_investimento(tipo: str) -> str:
+    return TIPOS_INVESTIMENTO.get((tipo or "").upper(), tipo or "Outros")

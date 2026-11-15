@@ -5,13 +5,15 @@ from __future__ import annotations
 from datetime import date
 from typing import Protocol
 
-from financas.models import Conta, Transacao
+from financas.models import Conta, Investimento, Transacao
 
 
 class Provedor(Protocol):
     def listar_contas(self) -> list[Conta]: ...
 
     def listar_transacoes(self, conta_id: str, desde: date, ate: date) -> list[Transacao]: ...
+
+    def listar_investimentos(self) -> list[Investimento]: ...
 
 
 def criar_provedor(config) -> Provedor:

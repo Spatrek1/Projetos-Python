@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import argparse
+import uuid
 from datetime import date
 
 from financas.config import carregar_config
 from financas.db import Banco
-from financas.models import DEBITO, formatar_brl, para_centavos
+from financas.models import DEBITO, TIPOS_INVESTIMENTO, Investimento, formatar_brl, para_centavos
 from financas.provedores import criar_provedor
-from financas.relatorios import exportar_csv, intervalo_mes, mes_atual, resumo_mensal
+from financas.relatorios import (carteira, exportar_csv, intervalo_mes, mes_atual, patrimonio,
+                                 resumo_mensal)
 from financas.sync import recategorizar, sincronizar
 
 
@@ -23,7 +25,11 @@ def cmd_sincronizar(args, banco, config):
     provedor = criar_provedor(config)
     r = sincronizar(banco, provedor, desde=args.desde, dias_iniciais=config.dias_iniciais)
     print(f"Sincronizado de {r.desde} até {r.ate}: {r.contas} conta(s), "
-          f"{r.novas} transação(ões) nova(s), {r.atualizadas} atualizada(s).")
+          f"{r.novas} transação(ões) nova(s), {r.atualizadas} atualizada(s), "
+          f"{r.investimentos} investimento(s).")
+    if r.investimentos_resgatados:
+        print(f"{r.investimentos_resgatados} investimento(s) não aparecem mais no banco "
+              "(resgatados) e foram marcados como inativos.")
 
 
 def cmd_contas(args, banco, config):
@@ -106,9 +112,121 @@ def cmd_exportar(args, banco, config):
     print(f"{n} transação(ões) exportada(s) para {args.arquivo}")
 
 
+def _pct(rend: int | None, base: int) -> str:
+    if rend is None or not base:
+        return "      -"
+    return f"{rend / base * 100:+6.2f}%"
+
+
+def cmd_investimentos(args, banco, config):
+    c = carteira(banco)
+    if not c.grupos:
+        print("Nenhum investimento. Rode 'sincronizar' ou use 'investimento adicionar'.")
+        return
+    for g in c.grupos.values():
+        pct_carteira = g.saldo / c.total * 100 if c.total else 0
+        print(f"\n## {g.tipo}: {formatar_brl(g.saldo)} ({pct_carteira:.1f}% da carteira)")
+        for inv in g.itens:
+            rend = (inv["saldo_centavos"] - inv["valor_aplicado_centavos"]
+                    if inv["valor_aplicado_centavos"] is not None else None)
+            extra = " | ".join(x for x in [
+                inv["taxa"], f"vence {inv['vencimento']}" if inv["vencimento"] else "",
+                "manual" if inv["item_id"] == "manual" else ""] if x)
+            print(f"  {inv['nome'][:34]:<34} {formatar_brl(inv['saldo_centavos']):>15}  "
+                  f"rend. {_pct(rend, inv['valor_aplicado_centavos'] or 0)}  {extra}  [{inv['id']}]")
+    print(f"\nTOTAL INVESTIDO: {formatar_brl(c.total)}")
+    if c.rendimento is not None:
+        print(f"Rendimento (onde o valor aplicado é conhecido): {formatar_brl(c.rendimento)} "
+              f"({_pct(c.rendimento, c.aplicado).strip()})")
+
+
+def cmd_investimento(args, banco, config):
+    if args.acao == "adicionar":
+        inv = Investimento(
+            id=f"manual-{uuid.uuid4().hex[:8]}", item_id="manual", nome=args.nome,
+            tipo=args.tipo, subtipo=args.subtipo or "", codigo=args.codigo or "",
+            saldo_centavos=para_centavos(args.saldo),
+            valor_aplicado_centavos=para_centavos(args.aplicado) if args.aplicado else None,
+            quantidade=args.quantidade, vencimento=args.vencimento, taxa=args.taxa or "",
+            instituicao=args.instituicao or "")
+        banco.salvar_investimento(inv)
+        print(f"Investimento cadastrado: {inv.nome} ({inv.id})")
+    elif args.acao == "atualizar":
+        atual = banco.buscar_investimento(args.id)
+        if atual is None or atual["item_id"] != "manual":
+            print("Investimento manual não encontrado (os do Open Finance se atualizam sozinhos).")
+            return 1
+        inv = Investimento(
+            id=atual["id"], item_id="manual", nome=atual["nome"], tipo=atual["tipo"],
+            subtipo=atual["subtipo"] or "", codigo=atual["codigo"] or "",
+            saldo_centavos=para_centavos(args.saldo),
+            valor_aplicado_centavos=(para_centavos(args.aplicado) if args.aplicado
+                                     else atual["valor_aplicado_centavos"]),
+            quantidade=atual["quantidade"],
+            vencimento=date.fromisoformat(atual["vencimento"]) if atual["vencimento"] else None,
+            taxa=atual["taxa"] or "", instituicao=atual["instituicao"] or "")
+        banco.salvar_investimento(inv)
+        print(f"{inv.nome}: saldo atualizado para {formatar_brl(inv.saldo_centavos)}")
+    elif args.acao == "remover":
+        ok = banco.remover_investimento_manual(args.id)
+        print("Removido." if ok else "Só é possível remover investimentos manuais.")
+
+
+def cmd_patrimonio(args, banco, config):
+    p = patrimonio(banco)
+    print("=== Patrimônio ===")
+    print(f"Contas:          {formatar_brl(p.contas):>16}")
+    print(f"Investimentos:   {formatar_brl(p.investimentos):>16}")
+    print(f"Faturas cartão:  {formatar_brl(-p.cartoes):>16}")
+    print(f"PATRIMÔNIO LÍQ.: {formatar_brl(p.liquido):>16}")
+    evolucao = banco.evolucao_investimentos()
+    if len(evolucao) > 1:
+        print("\nEvolução dos investimentos (fim de cada mês):")
+        anterior = None
+        for e in evolucao:
+            var = f"  ({formatar_brl(e['total_centavos'] - anterior)})" if anterior is not None else ""
+            print(f"  {e['mes']}  {formatar_brl(e['total_centavos']):>16}{var}")
+            anterior = e["total_centavos"]
+
+
+def cmd_diagnostico(args, banco, config):
+    """Confere a configuração e a conexão com a Pluggy sem gravar nada."""
+    print(f"Provedor configurado: {config.provedor}")
+    print(f"Banco de dados:       {config.db_path}")
+    if config.provedor != "pluggy":
+        print("-> Para usar o Open Finance real, coloque FINANCAS_PROVEDOR=pluggy no .env")
+        return
+    print(f"Client ID preenchido: {'sim' if config.pluggy_client_id else 'NÃO'}")
+    print(f"Client Secret:        {'preenchido' if config.pluggy_client_secret else 'NÃO preenchido'}")
+    print(f"Items configurados:   {len(config.pluggy_item_ids)}")
+    import requests
+
+    from financas.pluggy_client import PluggyClient, PluggyError
+
+    try:
+        cliente = PluggyClient(config.pluggy_client_id, config.pluggy_client_secret,
+                               config.pluggy_item_ids)
+        cliente._autenticar()
+        print("Autenticação na Pluggy: OK")
+        for item_id in config.pluggy_item_ids:
+            cliente.item_ids = [item_id]
+            contas = cliente.listar_contas()
+            invs = cliente.listar_investimentos()
+            print(f"  item {item_id}: {len(contas)} conta(s), {len(invs)} investimento(s)")
+            for c in contas:
+                print(f"     - {c.nome} ({c.tipo})")
+    except (PluggyError, requests.RequestException) as e:
+        print(f"ERRO: {e}")
+        return 1
+    print("Tudo certo! Agora rode: python -m financas sincronizar")
+
+
 def montar_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="financas", description="Controle de finanças via Open Finance")
     sub = p.add_subparsers(dest="comando", required=True)
+
+    sub.add_parser("diagnostico", help="Testa a configuração e a conexão com a Pluggy") \
+        .set_defaults(func=cmd_diagnostico)
 
     s = sub.add_parser("sincronizar", help="Baixa transações do Open Finance")
     s.add_argument("--desde", type=_data, help="Data inicial (AAAA-MM-DD)")
@@ -147,6 +265,30 @@ def montar_parser() -> argparse.ArgumentParser:
     s.set_defaults(func=cmd_orcamento)
 
     sub.add_parser("recategorizar", help="Reaplica as regras").set_defaults(func=cmd_recategorizar)
+
+    sub.add_parser("investimentos", help="Carteira de investimentos por tipo") \
+        .set_defaults(func=cmd_investimentos)
+
+    s = sub.add_parser("investimento", help="Cadastra investimentos que não vêm do Open Finance")
+    ins = s.add_subparsers(dest="acao", required=True)
+    a = ins.add_parser("adicionar")
+    a.add_argument("nome")
+    a.add_argument("--tipo", required=True, choices=sorted(TIPOS_INVESTIMENTO))
+    a.add_argument("--saldo", required=True, help="Valor atual, ex.: 1500.50")
+    a.add_argument("--aplicado", help="Quanto você aplicou (para calcular rendimento)")
+    a.add_argument("--subtipo", help="CDB, LCI, TREASURY, STOCK, CRYPTO...")
+    a.add_argument("--codigo", help="Ticker, ex.: PETR4")
+    a.add_argument("--quantidade", type=float)
+    a.add_argument("--vencimento", type=_data, help="AAAA-MM-DD")
+    a.add_argument("--taxa", help='ex.: "110%% CDI"')
+    a.add_argument("--instituicao")
+    u = ins.add_parser("atualizar"); u.add_argument("id")
+    u.add_argument("--saldo", required=True); u.add_argument("--aplicado")
+    r = ins.add_parser("remover"); r.add_argument("id")
+    s.set_defaults(func=cmd_investimento)
+
+    sub.add_parser("patrimonio", help="Contas + investimentos - cartões") \
+        .set_defaults(func=cmd_patrimonio)
 
     s = sub.add_parser("exportar", help="Exporta transações para CSV")
     s.add_argument("arquivo"); s.add_argument("--mes", help="AAAA-MM")

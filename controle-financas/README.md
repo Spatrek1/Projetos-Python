@@ -1,8 +1,12 @@
 # 💰 Controle de Finanças com Open Finance
 
-Registra **automaticamente todos os seus gastos** puxando os dados das suas contas
-e cartões pelo **Open Finance Brasil**, guarda tudo num banco SQLite local e gera
-relatórios por categoria, com orçamentos mensais.
+Registra **automaticamente todos os seus gastos e investimentos** puxando os dados
+das suas contas, cartões e corretoras pelo **Open Finance Brasil**, guarda tudo num
+banco SQLite local e gera relatórios por categoria, orçamentos mensais, carteira de
+investimentos e evolução do patrimônio.
+
+> 📘 **Primeira vez? Siga o [GUIA.md](GUIA.md)** — passo a passo completo, do
+> zero (instalar Python) até a sincronização automática diária.
 
 > Pessoa física não acessa as APIs do Open Finance diretamente — é preciso uma
 > instituição autorizada. Este projeto usa a **[Pluggy](https://pluggy.ai)**, que
@@ -40,7 +44,8 @@ python -m financas resumo
 ## 4. Comandos
 | Comando | O que faz |
 |---|---|
-| `sincronizar [--desde AAAA-MM-DD] [--fake]` | Baixa transações novas (incremental) |
+| `diagnostico` | Confere o `.env` e a conexão com a Pluggy |
+| `sincronizar [--desde AAAA-MM-DD] [--fake]` | Baixa transações e investimentos (incremental) |
 | `contas` | Lista contas e saldos |
 | `gastos [--mes AAAA-MM] [--categoria X] [--busca txt] [--todos]` | Lista gastos |
 | `resumo [--mes AAAA-MM]` | Receitas, gastos, saldo e % por categoria |
@@ -49,6 +54,10 @@ python -m financas resumo
 | `orcamento definir <categoria> <valor>` / `orcamento listar` | Limites mensais |
 | `recategorizar` | Reaplica regras a todo o histórico |
 | `exportar arquivo.csv [--mes AAAA-MM]` | Exporta para Excel/Sheets |
+| `investimentos` | Carteira por tipo, com rendimento |
+| `investimento adicionar "<nome>" --tipo X --saldo V [--aplicado V]` | Cadastra investimento fora do Open Finance (cripto, exterior…) |
+| `investimento atualizar <id> --saldo V` / `investimento remover <id>` | Mantém os manuais |
+| `patrimonio` | Contas + investimentos − cartões, e evolução mensal |
 
 Exemplo:
 ```bash
@@ -58,8 +67,8 @@ python -m financas resumo --mes 2026-11
 ```
 
 ## 5. Sincronizar todo dia
-- **Linux/macOS** (`crontab -e`): `0 8 * * * cd /caminho/controle-financas && .venv/bin/python -m financas sincronizar`
-- **Windows**: Agendador de Tarefas executando `python -m financas sincronizar` na pasta do projeto.
+Use `scripts/sincronizar.bat` (Windows, Agendador de Tarefas) ou
+`scripts/sincronizar.sh` (cron). Detalhes na seção 14 do [GUIA.md](GUIA.md).
 
 ## 6. Usando com o Claude no VS Code
 Abra a pasta `controle-financas` no VS Code com a extensão do Claude Code.
@@ -70,5 +79,5 @@ Peça, por exemplo:
 - "Mande um alerta no Telegram quando um orçamento estourar"
 
 ## Segurança
-`.env`, `*.db` e `*.csv` ficam fora do git. Seus dados ficam só na sua máquina.
+`.env`, `*.db`, `*.csv` e `*.log` ficam fora do git. Seus dados ficam só na sua máquina.
 O acesso é somente leitura.

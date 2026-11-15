@@ -21,6 +21,8 @@ class ResultadoSync:
     contas: int = 0
     novas: int = 0
     atualizadas: int = 0
+    investimentos: int = 0
+    investimentos_resgatados: int = 0
 
 
 def calcular_inicio(banco: Banco, hoje: date, dias_iniciais: int) -> date:
@@ -49,8 +51,22 @@ def sincronizar(banco: Banco, provedor: Provedor, desde: date | None = None,
                 resultado.atualizadas += 1
         banco.commit()
 
+    if hasattr(provedor, "listar_investimentos"):
+        sincronizar_investimentos(banco, provedor, resultado, ate)
+
     banco.registrar_sincronizacao(desde, ate, resultado.novas, resultado.atualizadas)
     return resultado
+
+
+def sincronizar_investimentos(banco: Banco, provedor: Provedor, resultado: ResultadoSync,
+                              hoje: date) -> None:
+    investimentos = provedor.listar_investimentos()
+    for inv in investimentos:
+        banco.salvar_investimento(inv, data_foto=hoje)
+    resultado.investimentos = len(investimentos)
+    item_ids = set(getattr(provedor, "item_ids", None) or {i.item_id for i in investimentos})
+    resultado.investimentos_resgatados = banco.desativar_investimentos_ausentes(
+        item_ids, {i.id for i in investimentos})
 
 
 def recategorizar(banco: Banco) -> int:

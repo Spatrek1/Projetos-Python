@@ -5,6 +5,7 @@ Fluxo:
   1. POST /auth com clientId/clientSecret -> apiKey (válida por ~2h)
   2. GET /accounts?itemId=...            -> contas de cada conexão (item)
   3. GET /transactions?accountId=...      -> transações paginadas
+  4. GET /investments?itemId=...          -> posições de investimento paginadas
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from datetime import date, datetime
 
 import requests
 
-from financas.models import CREDITO, DEBITO, Conta, Transacao, para_centavos
+from financas.models import CREDITO, DEBITO, Conta, Investimento, Transacao, para_centavos
 
 BASE_URL = "https://api.pluggy.ai"
 TTL_API_KEY = 110 * 60  # renova um pouco antes das 2h
@@ -103,6 +104,70 @@ class PluggyClient:
                 break
             pagina += 1
         return transacoes
+
+    def listar_investimentos(self) -> list[Investimento]:
+        investimentos: list[Investimento] = []
+        for item_id in self.item_ids:
+            pagina = 1
+            while True:
+                dados = self._get("/investments", {"itemId": item_id, "pageSize": 500,
+                                                   "page": pagina})
+                investimentos.extend(converter_investimento(i, item_id)
+                                     for i in dados.get("results", []))
+                if pagina >= int(dados.get("totalPages") or 1):
+                    break
+                pagina += 1
+        return investimentos
+
+
+def _centavos_ou_none(valor) -> int | None:
+    if valor is None:
+        return None
+    return round(float(valor) * 100)
+
+
+def _descrever_taxa(i: dict) -> str:
+    rate, rate_type, fixa = i.get("rate"), i.get("rateType"), i.get("fixedAnnualRate")
+    partes = []
+    if rate is not None and rate_type:
+        partes.append(f"{rate:g}% {rate_type}")
+    elif rate_type:
+        partes.append(rate_type)
+    if fixa:
+        partes.append(f"{fixa:g}% a.a.")
+    return " + ".join(partes)
+
+
+def converter_investimento(i: dict, item_id: str) -> Investimento:
+    """Converte o JSON de /investments da Pluggy.
+
+    `balance` = valor líquido atual; `amount` = valor bruto;
+    `amountOriginal` = valor aplicado (nem toda instituição envia).
+    Campos ausentes viram None — use sempre .get().
+    """
+    saldo = i.get("balance")
+    if saldo is None:
+        saldo = i.get("amount") or 0
+    venc = i.get("dueDate")
+    instituicao = i.get("issuer") or ""
+    if not instituicao and isinstance(i.get("institution"), dict):
+        instituicao = i["institution"].get("name") or ""
+    return Investimento(
+        id=i["id"],
+        item_id=item_id,
+        nome=i.get("name") or i.get("code") or "Investimento",
+        tipo=(i.get("type") or "OTHER").upper(),
+        subtipo=i.get("subtype") or "",
+        codigo=i.get("code") or "",
+        saldo_centavos=round(float(saldo) * 100),
+        valor_bruto_centavos=_centavos_ou_none(i.get("amount")),
+        valor_aplicado_centavos=_centavos_ou_none(i.get("amountOriginal")),
+        quantidade=i.get("quantity"),
+        vencimento=(datetime.fromisoformat(venc.replace("Z", "+00:00")).date() if venc else None),
+        taxa=_descrever_taxa(i),
+        instituicao=instituicao,
+        moeda=i.get("currencyCode") or "BRL",
+    )
 
 
 def converter_transacao(t: dict, conta_id: str) -> Transacao:

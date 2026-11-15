@@ -5,7 +5,7 @@ from __future__ import annotations
 import random
 from datetime import date, timedelta
 
-from financas.models import CREDITO, DEBITO, Conta, Transacao
+from financas.models import CREDITO, DEBITO, Conta, Investimento, Transacao
 
 _GASTOS = [
     ("IFOOD *RESTAURANTE", "Food delivery", 25, 90),
@@ -53,3 +53,25 @@ class FakeProvider:
                     tipo=DEBITO, categoria_banco=cat))
             dia += timedelta(days=1)
         return resultado
+
+    def listar_investimentos(self) -> list[Investimento]:
+        return [
+            Investimento(id="fake-cdb", item_id="fake", nome="CDB Banco Fake 2028",
+                         tipo="FIXED_INCOME", subtipo="CDB", saldo_centavos=1_087_350,
+                         valor_bruto_centavos=1_103_200, valor_aplicado_centavos=1_000_000,
+                         vencimento=date(2028, 6, 15), taxa="110% CDI",
+                         instituicao="Banco Fake"),
+            Investimento(id="fake-tesouro", item_id="fake", nome="Tesouro IPCA+ 2035",
+                         tipo="FIXED_INCOME", subtipo="TREASURY", saldo_centavos=532_180,
+                         valor_aplicado_centavos=500_000, quantidade=1.8,
+                         vencimento=date(2035, 5, 15), taxa="IPCA + 6.1% a.a.",
+                         instituicao="Tesouro Nacional"),
+            Investimento(id="fake-fundo", item_id="fake", nome="Fundo Multimercado Fake",
+                         tipo="MUTUAL_FUND", subtipo="MULTIMARKET_FUND",
+                         saldo_centavos=254_900, valor_aplicado_centavos=260_000,
+                         quantidade=1520.4, instituicao="Gestora Fake"),
+            Investimento(id="fake-acao", item_id="fake", nome="Ação Fake ON", codigo="FAKE3",
+                         tipo="EQUITY", subtipo="STOCK", saldo_centavos=318_000,
+                         valor_aplicado_centavos=290_000, quantidade=100,
+                         instituicao="Corretora Fake"),
+        ]
