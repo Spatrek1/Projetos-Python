@@ -6,3 +6,9 @@ __pycache__/
 .venv/
 *.csv
 *.log
+# Briefcase (app Android)
+build/
+dist/
+logs/
+*.apk
+*.aab

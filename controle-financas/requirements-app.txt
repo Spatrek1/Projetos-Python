@@ -1,0 +1,5 @@
+# Só para gerar/testar o app Android (o programa do PC usa requirements.txt)
+-r requirements.txt
+briefcase==0.4.7
+toga-core~=0.5.0
+toga-dummy~=0.5.0

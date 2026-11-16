@@ -40,6 +40,16 @@ Guia completo para o usuário: `GUIA.md`.
 - `relatorios.py` — resumo mensal, `carteira()`, `patrimonio()` e exportação CSV.
 - `cli.py` — argparse; cada subcomando é uma função `cmd_*`.
 
+## App Android (`app/financasapp/`, BeeWare/Briefcase + Toga 0.5)
+- Reaproveita o pacote `financas` sem alterações (`sources` no `pyproject.toml`). Não importe
+  `financas.config`/`dotenv` no app: as chaves vêm de `configuracao.py` (JSON em `app.paths.config`).
+- `dados.py` monta os dados de cada tela (puro, testado); `app.py` só desenha.
+- SQLite não atravessa threads: a sync roda em `run_in_executor` com conexão própria
+  (`dados.sincronizar_pluggy`); a interface abre/fecha um `Banco` a cada renderização.
+- `tests/test_app.py` sobe o app com `TOGA_BACKEND=toga_dummy` (precisa de `requirements-app.txt`).
+- Build: veja `APP_ANDROID.md`. No Windows deste usuário, `BRIEFCASE_HOME` precisa ser um caminho
+  sem espaços (ex.: `C:\Documentos\briefcase-home`).
+
 ## Convenções (siga sempre)
 - **Dinheiro é `int` em centavos**, sempre positivo; a direção vem de `tipo` (`DEBITO` = gasto, `CREDITO` = receita). Nunca use `float` para somar valores.
 - Código, nomes e mensagens em **português**.

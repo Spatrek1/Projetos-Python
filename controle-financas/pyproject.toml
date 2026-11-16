@@ -1,0 +1,42 @@
+# Configuração do app Android (BeeWare/Briefcase). O programa de terminal do PC
+# não depende deste arquivo: continua sendo `python -m financas ...`.
+# Gerar o APK:  briefcase create android  ->  briefcase build android
+# (defina BRIEFCASE_HOME num caminho SEM espaços; veja APP_ANDROID.md)
+[tool.briefcase]
+project_name = "Controle de Financas"
+bundle = "br.controlefinancas"
+version = "1.0.0"
+url = "https://github.com/Spatrek1/Projetos-Python"
+license = "Proprietary"
+author = "Spatrek1"
+
+[tool.briefcase.app.financasapp]
+formal_name = "Finanças"
+description = "Controle de finanças pessoais via Open Finance (Pluggy)"
+long_description = """Sincroniza contas, cartões e investimentos pela Pluggy (MeuPluggy)
+e guarda tudo só no celular."""
+sources = [
+    "app/financasapp",
+    "financas",          # o mesmo pacote usado no PC
+]
+requires = [
+    "requests>=2.31",
+]
+
+[tool.briefcase.app.financasapp.windows]
+requires = [
+    "toga-winforms~=0.5.0",
+]
+
+[tool.briefcase.app.financasapp.android]
+requires = [
+    "toga-android~=0.5.0",
+]
+base_theme = "Theme.MaterialComponents.Light.DarkActionBar"
+build_gradle_dependencies = [
+    "com.google.android.material:material:1.13.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [".", "app"]
