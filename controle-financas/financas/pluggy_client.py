@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import time
 from datetime import date, datetime
+from urllib.parse import parse_qs, urlsplit
 
 import requests
 
@@ -89,20 +90,27 @@ class PluggyClient:
         return contas
 
     def listar_transacoes(self, conta_id: str, desde: date, ate: date) -> list[Transacao]:
+        """GET /v2/transactions com paginação por cursor.
+
+        O /transactions antigo foi desativado (HTTP 410). A resposta traz `results`
+        e `next`: uma query string ("?accountId=...&after=...") ou null na última
+        página. Extraímos só o `after` e reenviamos junto com os filtros de data.
+        """
         transacoes: list[Transacao] = []
-        pagina = 1
+        params = {
+            "accountId": conta_id,
+            "dateFrom": desde.isoformat(),
+            "dateTo": ate.isoformat(),
+        }
+        vistos: set[str] = set()
         while True:
-            dados = self._get("/transactions", {
-                "accountId": conta_id,
-                "from": desde.isoformat(),
-                "to": ate.isoformat(),
-                "pageSize": 500,
-                "page": pagina,
-            })
+            dados = self._get("/v2/transactions", params)
             transacoes.extend(converter_transacao(t, conta_id) for t in dados.get("results", []))
-            if pagina >= int(dados.get("totalPages") or 1):
+            cursor = _extrair_cursor(dados.get("next"))
+            if not cursor or cursor in vistos:  # fim, ou proteção contra loop
                 break
-            pagina += 1
+            vistos.add(cursor)
+            params = {**params, "after": cursor}
         return transacoes
 
     def listar_investimentos(self) -> list[Investimento]:
@@ -118,6 +126,15 @@ class PluggyClient:
                     break
                 pagina += 1
         return investimentos
+
+
+def _extrair_cursor(proximo: str | None) -> str | None:
+    """Tira o `after` da query string `next` da Pluggy (ou None se não houver)."""
+    if not proximo:
+        return None
+    query = urlsplit(proximo).query or proximo.lstrip("?")
+    valores = parse_qs(query).get("after")
+    return valores[0] if valores else None
 
 
 def _centavos_ou_none(valor) -> int | None:

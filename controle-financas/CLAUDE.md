@@ -25,11 +25,17 @@ Guia completo para o usuário: `GUIA.md`.
 - `config.py` — lê `.env` (`FINANCAS_PROVEDOR`, `PLUGGY_*`, `FINANCAS_DB`).
 - `models.py` — `Conta`, `Transacao`, `Investimento`, helpers `para_centavos` / `formatar_brl`.
 - `provedores.py` — `Provedor` (Protocol) + `criar_provedor(config)`.
-- `pluggy_client.py` — cliente HTTP da API Pluggy (`/auth`, `/accounts`, `/transactions`, `/investments`).
-  Campos da Pluggy podem vir `null`: sempre use `.get()`.
+- `pluggy_client.py` — cliente HTTP da API Pluggy (`/auth`, `/accounts`, `/v2/transactions`, `/investments`, `/items/{id}`).
+  Campos da Pluggy podem vir `null`: sempre use `.get()`. O `/transactions` antigo responde 410:
+  use `/v2/transactions` (`dateFrom`/`dateTo`, paginação por cursor `after` extraído de `next`).
+  Dados reais vêm pelo conector **MeuPluggy** (gratuito, atualiza 1x/dia); IDs copiados do
+  meu.pluggy.ai dão 404 — só valem os Item IDs da aplicação no dashboard.
 - `fake_provider.py` — dados determinísticos para dev/testes.
 - `db.py` — classe `Banco`: schema SQLite e todas as queries.
 - `categorias.py` — regra de categorização (manual > regra do usuário > categoria do banco > "Outros").
+  Em `MAPA_CATEGORIA_BANCO` **a ordem importa** (vence o primeiro trecho contido): específicos antes
+  dos genéricos. `CATEGORIAS_FORA_DO_TOTAL` (fatura, entre contas próprias, investimentos) não conta
+  como gasto/receita no resumo — evita contar o mesmo dinheiro duas vezes.
 - `sync.py` — `sincronizar()` (incremental, upsert, inclui investimentos) e `recategorizar()`.
 - `relatorios.py` — resumo mensal, `carteira()`, `patrimonio()` e exportação CSV.
 - `cli.py` — argparse; cada subcomando é uma função `cmd_*`.
@@ -43,6 +49,7 @@ Guia completo para o usuário: `GUIA.md`.
 - Investimentos: `saldo_centavos` = valor líquido atual; `valor_aplicado_centavos` pode ser `None` (instituição não informou) — nunca trate como zero no rendimento.
 - Investimentos com `item_id = 'manual'` são do usuário: a sync nunca os altera nem desativa. Os do Open Finance que somem viram `ativo = 0` (não apague — o histórico importa).
 - `investimentos_historico` guarda uma foto por investimento por dia; é a base da evolução do patrimônio.
+- A carteira agrupa por `nome_grupo_investimento(tipo, subtipo)`: FIIs/ETFs/BDRs vêm como `EQUITY` e se separam pelo subtipo.
 - Testes nunca chamam a rede: use `FakeProvider` ou uma sessão HTTP falsa (veja `tests/test_pluggy_client.py`).
 - Toda funcionalidade nova vem com teste em `tests/`.
 

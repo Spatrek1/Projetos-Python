@@ -7,6 +7,7 @@ import csv
 from dataclasses import dataclass, field
 from datetime import date
 
+from financas.categorias import CATEGORIAS_FORA_DO_TOTAL
 from financas.db import Banco
 from financas.models import CREDITO, DEBITO
 
@@ -28,6 +29,8 @@ class ResumoMensal:
     gastos: int = 0
     por_categoria: dict[str, int] = field(default_factory=dict)
     quantidade_gastos: int = 0
+    # categoria -> [entradas, saídas] das movimentações que não são gasto/receita
+    fora_do_total: dict[str, list[int]] = field(default_factory=dict)
 
     @property
     def saldo(self) -> int:
@@ -38,7 +41,10 @@ def resumo_mensal(banco: Banco, mes: str) -> ResumoMensal:
     inicio, fim = intervalo_mes(mes)
     resumo = ResumoMensal(mes=mes)
     for t in banco.buscar_transacoes(inicio=inicio, fim=fim):
-        if t["tipo"] == CREDITO:
+        if t["categoria"] in CATEGORIAS_FORA_DO_TOTAL:
+            par = resumo.fora_do_total.setdefault(t["categoria"], [0, 0])
+            par[0 if t["tipo"] == CREDITO else 1] += t["valor_centavos"]
+        elif t["tipo"] == CREDITO:
             resumo.receitas += t["valor_centavos"]
         elif t["tipo"] == DEBITO:
             resumo.gastos += t["valor_centavos"]
@@ -94,11 +100,11 @@ class Carteira:
 
 
 def carteira(banco: Banco) -> Carteira:
-    from financas.models import nome_tipo_investimento
+    from financas.models import nome_grupo_investimento
 
     c = Carteira()
     for inv in banco.listar_investimentos():
-        nome = nome_tipo_investimento(inv["tipo"])
+        nome = nome_grupo_investimento(inv["tipo"], inv["subtipo"])
         g = c.grupos.setdefault(nome, GrupoInvestimento(tipo=nome))
         g.saldo += inv["saldo_centavos"]
         if inv["valor_aplicado_centavos"] is not None:

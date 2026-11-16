@@ -39,3 +39,27 @@ def test_sync_incremental_usa_ultima_data(banco):
     sincronizar(banco, FakeProvider(), desde=date(2026, 10, 1), ate=date(2026, 10, 31))
     r = sincronizar(banco, FakeProvider(), ate=date(2026, 11, 7))
     assert r.desde == date(2026, 10, 24)
+
+
+def test_resumo_deixa_fatura_contas_proprias_e_investimentos_fora_do_total(banco):
+    from financas.models import CREDITO, DEBITO, Conta, Transacao
+    banco.salvar_conta(Conta(id="c1", item_id="i", nome="CC", tipo="BANK"))
+    dia = date(2026, 10, 10)
+    lancamentos = [
+        ("salario", 500_000, CREDITO, "Salário"),
+        ("mercado", 30_000, DEBITO, "Mercado"),
+        ("fatura", 120_000, DEBITO, "Pagamento de fatura"),
+        ("pix-meu", 50_000, DEBITO, "Entre contas próprias"),
+        ("aplic", 100_000, DEBITO, "Investimentos"),
+        ("resgate", 20_000, CREDITO, "Investimentos"),
+    ]
+    for tid, valor, tipo, cat in lancamentos:
+        banco.salvar_transacao(Transacao(id=tid, conta_id="c1", data=dia, descricao=tid,
+                                         valor_centavos=valor, tipo=tipo), cat)
+    banco.commit()
+    r = resumo_mensal(banco, "2026-10")
+    assert (r.receitas, r.gastos) == (500_000, 30_000)
+    assert r.por_categoria == {"Mercado": 30_000}
+    assert r.fora_do_total == {"Pagamento de fatura": [0, 120_000],
+                               "Entre contas próprias": [0, 50_000],
+                               "Investimentos": [20_000, 100_000]}

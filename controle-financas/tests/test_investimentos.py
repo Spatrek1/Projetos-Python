@@ -73,3 +73,11 @@ def test_evolucao_mensal(banco):
     banco.salvar_investimento(inv, data_foto=date(2026, 10, 31))
     ev = [(e["mes"], e["total_centavos"]) for e in banco.evolucao_investimentos()]
     assert ev == [("2026-09", 100), ("2026-10", 170)]
+
+
+def test_fiis_tem_grupo_proprio(banco):
+    for i, (sub, nome) in enumerate([("STOCK", "PETR4"), ("REAL_ESTATE_FUND", "HGLG11"),
+                                     ("ETF", "BOVA11")]):
+        banco.salvar_investimento(Investimento(id=f"e{i}", item_id="manual", nome=nome,
+                                               tipo="EQUITY", subtipo=sub, saldo_centavos=100))
+    assert set(carteira(banco).grupos) == {"Ações", "FIIs", "ETFs"}

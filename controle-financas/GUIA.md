@@ -259,13 +259,22 @@ Para uso pessoal, o caminho mais simples é o **Meu Pluggy**:
 6. Repita para cada banco/corretora (Nubank, Itaú, Inter, XP, BTG…).
 
 ### 9.2 Levar as conexões para a sua aplicação
-1. No **dashboard da Pluggy**, dentro da sua aplicação, use a opção de
-   **conectar uma conta** (ambiente de testes/"Connect"/demo do Pluggy Connect).
-2. Procure o conector **"MeuPluggy"** e faça login com a conta criada no
-   passo 9.1.
-3. Ao concluir, a conexão aparece na lista de **Items** da aplicação.
+> ⚠️ Os IDs que aparecem no **meu.pluggy.ai** (em "Ver detalhes" ou no link
+> `meu.pluggy.ai/connections/...`) **não funcionam** no programa — a Pluggy
+> responde "item not found". Só valem os IDs criados pelo **dashboard**.
+
+1. No **dashboard da Pluggy**, vá em **Dados Financeiros → Customização** e
+   adicione o conector **MeuPluggy** à lista de conectores.
+2. Em **Visão Geral → "Conecte um item demo" → Conectar**, escolha
+   **MeuPluggy** e faça login com a conta criada no passo 9.1.
+3. Autorize **um banco por vez** (repita para cada banco/corretora).
 4. Copie o **Item ID** de cada conexão (um texto longo no formato
    `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`).
+
+> **Custo:** o dashboard mostra um "trial de 15 dias", mas segundo o
+> [README oficial do MeuPluggy](https://github.com/pluggyai/meu-pluggy) você
+> continua puxando seus dados depois que ele expira. Não é preciso clicar em
+> "Liberar dados reais" nem contratar plano. Os dados atualizam 1x por dia.
 
 > Se a interface estiver diferente, procure na documentação da Pluggy por
 > "Meu Pluggy" ou "Pluggy Connect". O que importa é terminar com **um ou mais

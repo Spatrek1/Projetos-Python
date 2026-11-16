@@ -70,6 +70,11 @@ def cmd_resumo(args, banco, config):
             alerta = "  ⚠ ESTOUROU" if valor > limite else ""
             linha += f"   orçamento {formatar_brl(limite)} ({uso:.0f}%){alerta}"
         print(linha)
+    if r.fora_do_total:
+        print("\nFora do total (só mudam o dinheiro de lugar):")
+        for cat, (entradas, saidas) in sorted(r.fora_do_total.items()):
+            print(f"  {cat:<22} entrou {formatar_brl(entradas):>13}   "
+                  f"saiu {formatar_brl(saidas):>13}")
 
 
 def cmd_categorizar(args, banco, config):
@@ -208,15 +213,37 @@ def cmd_diagnostico(args, banco, config):
                                config.pluggy_item_ids)
         cliente._autenticar()
         print("Autenticação na Pluggy: OK")
+        problemas = 0
         for item_id in config.pluggy_item_ids:
+            try:
+                item = cliente._get(f"/items/{item_id}")
+            except PluggyError as e:
+                problemas += 1
+                if "(404)" in str(e):
+                    print(f"  item {item_id}: NÃO ENCONTRADO na sua aplicação.")
+                    print("     -> Este ID não pertence ao seu Client ID (ex.: ID copiado do"
+                          " meu.pluggy.ai).")
+                    print("        Conecte pelo dashboard (conector MeuPluggy) e use o Item ID"
+                          " que aparecer lá.")
+                else:
+                    print(f"  item {item_id}: ERRO {e}")
+                continue
+            conector = (item.get("connector") or {}).get("name") or "?"
             cliente.item_ids = [item_id]
             contas = cliente.listar_contas()
             invs = cliente.listar_investimentos()
-            print(f"  item {item_id}: {len(contas)} conta(s), {len(invs)} investimento(s)")
+            print(f"  item {item_id} [{conector}, status {item.get('status')}]: "
+                  f"{len(contas)} conta(s), {len(invs)} investimento(s)")
             for c in contas:
                 print(f"     - {c.nome} ({c.tipo})")
+            if not contas and not invs:
+                problemas += 1
+                print("     -> Nenhum dado ainda. Se o status for UPDATING, aguarde e rode de novo.")
     except (PluggyError, requests.RequestException) as e:
         print(f"ERRO: {e}")
+        return 1
+    if problemas:
+        print(f"Atenção: {problemas} item(s) com problema. Corrija antes de sincronizar.")
         return 1
     print("Tudo certo! Agora rode: python -m financas sincronizar")
 

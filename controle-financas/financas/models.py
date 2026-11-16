@@ -91,3 +91,17 @@ TIPOS_INVESTIMENTO = {
 
 def nome_tipo_investimento(tipo: str) -> str:
     return TIPOS_INVESTIMENTO.get((tipo or "").upper(), tipo or "Outros")
+
+
+# Subtipos que ganham grupo próprio na carteira (a Pluggy manda FIIs, ETFs e
+# BDRs como type=EQUITY, diferenciando só pelo subtype).
+GRUPOS_POR_SUBTIPO = {
+    "REAL_ESTATE_FUND": "FIIs",
+    "ETF": "ETFs",
+    "BDR": "BDRs",
+}
+
+
+def nome_grupo_investimento(tipo: str, subtipo: str | None = None) -> str:
+    return (GRUPOS_POR_SUBTIPO.get((subtipo or "").upper())
+            or nome_tipo_investimento(tipo))
